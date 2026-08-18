@@ -1,0 +1,30 @@
+voice_id,name,gender,age,use_case,region,language
+hn_female_ngochuyen_full_48k-fhg,HN - Ngọc Huyền,Nữ,Thanh niên,Review phim,Miền Bắc,Tiếng Việt
+hn_female_ngochuyen_full_24k-st,Ngọc Huyền 2.0,Nữ,Người lớn,Review phim,Miền Bắc,Tiếng Việt
+hn_male_manhdung_full_24k-st,Mạnh Dũng 2.0 (Beta),Nam,Người lớn,Quảng cáo,Miền Bắc,Tiếng Việt
+sg_female_tuongvy_call_44k-fhg,SG - Tường Vy,Nữ,Thanh niên,Tổng đài,Miền Nam,Tiếng Việt
+hn_male_vietbach_child_22k-vc,HN - Việt Bách,Nam,Trẻ em,Trẻ em,Miền Bắc,Tiếng Việt
+hn_female_nganha_child_22k-vc,HN - Ngân Hà,Nữ,Trẻ em,Trẻ em,Miền Bắc,Tiếng Việt
+hn_male_minhquan_yt-stable,HN - Minh Quân,Nam,Thanh niên,Quảng cáo,Miền Bắc,Tiếng Việt
+sg_female_thaotrinh_full_44k-phg,SG - Thảo Trinh,Nữ,Thanh niên,Tổng đài,Miền Nam,Tiếng Việt
+sg_male_chidat_ebook_48k-phg,SG - Chí Đạt,Nam,Thanh niên,Sách nói,Miền Nam,Tiếng Việt
+hn_female_hachi_book_22k-vc,HN - Hà Chi,Nữ,Thanh niên,Đọc truyện,Miền Bắc,Tiếng Việt
+hn_male_phuthang_stor80dt_48k-fhg,HN - Anh Khôi,Nam,Người già,Đọc truyện,Miền Bắc,Tiếng Việt
+hn_female_hermer_stor_48k-fhg,HN - Ngọc Lan,Nữ,Thanh niên,Đọc truyện,Miền Bắc,Tiếng Việt
+hn_female_lenka_stor_48k-phg,HN - Nguyệt Dương,Nữ,Thanh niên,Đọc truyện,Miền Bắc,Tiếng Việt
+hn_male_manhdung_news_48k-fhg,HN - Mạnh Dũng,Nam,Thanh niên,Tin tức,Miền Bắc,Tiếng Việt
+hn_male_thanhlong_talk_48k-fhg,HN - Thanh Long,Nam,Thanh niên,Sách nói,Miền Bắc,Tiếng Việt
+sg_female_thaotrinh_full_48k-fhg,SG - Thảo Trinh,Nữ,Thanh niên,Sách nói,Miền Nam,Tiếng Việt
+hn_male_phuthang_news65dt_44k-fhg,HN - Anh Khôi,Nam,Người già,Tin tức,Miền Bắc,Tiếng Việt
+hue_female_huonggiang_full_48k-fhg,Huế - Hương Giang,Nữ,Thanh niên,Tổng đài,Miền Trung,Tiếng Việt
+hn_female_maiphuong_vdts_48k-fhg,HN - Mai Phương,Nữ,Thanh niên,Đào tạo,Miền Bắc,Tiếng Việt
+sg_female_lantrinh_vdts_48k-fhg,SG - Lan Trinh,Nữ,Thanh niên,Đọc truyện,Miền Nam,Tiếng Việt
+sg_male_trungkien_vdts_48k-fhg,SG - Trung Kiên,Nam,Thanh niên,Tổng đài,Miền Nam,Tiếng Việt
+hue_male_duyphuong_full_48k-fhg,Huế - Duy Phương,Nam,Thanh niên,Sách nói,Miền Trung,Tiếng Việt
+sg_male_minhhoang_full_48k-fhg,SG - Minh Hoàng,Nam,Thanh niên,Đào tạo,Miền Nam,Tiếng Việt
+hn_male_manhdung_news_48k-phg,HN - Mạnh Dũng,Nam,Thanh niên,Quảng cáo,Miền Bắc,Tiếng Việt
+s_sg_male_thientam_ytstable_vc,Thiện Tâm,Nam,Thanh niên,Đọc truyện,Miền Nam,Tiếng Việt
+n_hanoi_female_nguyetnga2_book_vc,Nguyệt Nga Podcast,Nữ,Thanh niên,Sách nói,Miền Bắc,Tiếng Việt
+n_hn_male_ngankechuyen_ytstable_vc,Ngạn Kể Chuyện,Nam,Người già,Đọc truyện,Miền Bắc,Tiếng Việt
+voice-68d18c564db8ac1b515dac2d,Phóng viên Nam,Nam,Thanh niên,Tin tức,Miền Bắc,Tiếng Việt
+voice-688b4a8c3284f29691365046,HuiSheng,Nam,Thanh niên,Đọc truyện,Miền Bắc,Tiếng Việt

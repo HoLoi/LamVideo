@@ -1,0 +1,191 @@
+# =========================================================
+# Python
+# =========================================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# =========================================================
+# Environment / Secrets
+# =========================================================
+.env
+.env.*
+!.env.example
+
+# =========================================================
+# Node.js
+# =========================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================================================
+# Build / Distribution
+# =========================================================
+build/
+dist/
+
+# =========================================================
+# IDE / Editor
+# =========================================================
+.vscode/
+.idea/
+
+# =========================================================
+# Operating System
+# =========================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================================================
+# Logs
+# =========================================================
+*.log
+
+# =========================================================
+# Temporary files
+# =========================================================
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# =========================================================
+# AI Video Downloader
+# =========================================================
+
+# Downloaded videos / files
+ai-video-downloader-main/downloads/
+ai-video-downloader-main/backend/outputs/
+ai-video-downloader-main/backend_cpu/outputs/
+
+# Generated dictionaries / history
+ai-video-downloader-main/backend/custom_dict/_combined/
+ai-video-downloader-main/backend_cpu/custom_dict/_combined/
+ai-video-downloader-main/backend/custom_dict/_history.json
+ai-video-downloader-main/backend_cpu/custom_dict/_history.json
+ai-video-downloader-main/backend/custom_dict/_pause.json
+ai-video-downloader-main/backend_cpu/custom_dict/_pause.json
+
+# Local resources
+ai-video-downloader-main/resources/
+
+# Local Python runtime
+ai-video-downloader-main/python-portable/
+ai-video-downloader-main/python-portable-cpu/
+
+# Archives / executables
+ai-video-downloader-main/*.zip
+ai-video-downloader-main/*.bat
+ai-video-downloader-main/*.exe
+
+# Local binaries
+ai-video-downloader-main/local/
+ai-video-downloader-main/bin/
+
+# =========================================================
+# CapCut TTS
+# =========================================================
+
+# Python cache
+CapCapTTS/__pycache__/
+CapCapTTS/backend/__pycache__/
+CapCapTTS/backend/voices/__pycache__/
+
+# Python virtual environment
+CapCapTTS/backend/.venv/
+
+# Generated / downloaded data
+CapCapTTS/downloads/
+CapCapTTS/index.csv
+
+# Build files
+CapCapTTS/build/
+CapCapTTS/dist/
+CapCapTTS/.eggs/
+
+# =========================================================
+# Large generated media
+# =========================================================
+
+# Video
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+
+# Audio
+*.mp3
+*.wav
+*.flac
+*.aac
+*.m4a
+*.ogg
+
+# Images generated locally
+*.png
+*.jpg
+*.jpeg
+*.webp
+
+# =========================================================
+# Large AI model files
+# =========================================================
+
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.bin
+
+# =========================================================
+# Local databases / cache
+# =========================================================
+
+*.sqlite
+*.sqlite3
+*.db
+
+# =========================================================
+# Temporary folders
+# =========================================================
+temp/
+tmp/
+cache/
+.cache/
+
+
+
+# =========================================================
+# CapCapTTS generated data
+# =========================================================
+CapCapTTS/data/videos/
+CapCapTTS/data/outputs/
+CapCapTTS/data/cache/
+
+# Generated media
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.flac
+*.aac
+*.m4a

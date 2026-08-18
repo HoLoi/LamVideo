@@ -1,0 +1,17 @@
+fastapi>=0.100.0
+uvicorn>=0.20.0
+pydub>=0.25.0
+python-multipart>=0.0.6
+onnxruntime>=1.15.0
+numpy>=1.24.0
+vietnormalizer>=0.1.0
+piper-tts>=1.0.0
+aiohttp>=3.9.0
+aiofiles>=23.0.0
+huggingface-hub>=0.20.0
+# ─── Video Library (MVP-1) ───
+playwright>=1.44
+faster-whisper>=1.0.0
+yt-dlp>=2025.1.1
+# ─── Video Translation (MVP-2) ───
+deep-translator>=1.11.0
