@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi import UploadFile, File
 from pydantic import BaseModel
 from pydub import AudioSegment
 
@@ -960,6 +961,12 @@ from video_translator import run_translate_job
 from video_dubber import (
     run_dub_job, is_valid_dub_id, dub_output_dir, list_dub_outputs, dub_plan_summary,
 )
+from video_composer import (
+    run_compose_job, validate_compose_options, is_valid_export_id, export_dir,
+    list_exports, list_assets, save_logo_asset, _get_asset_path,
+    render_preview_frame, is_valid_preview_id, preview_path,
+)
+from video_segments import merge_segments, apply_edits
 
 
 class VideoDownloadRequest(BaseModel):
@@ -989,6 +996,18 @@ class VideoDubRequest(BaseModel):
     voice_id: str = "banmai"
     output_name: str | None = None
     normalize_audio: bool = False
+
+
+class VideoSegmentItem(BaseModel):
+    index: int | None = None
+    start: float | None = None
+    end: float | None = None
+    text_original: str = ""
+    text_vi: str = ""
+
+
+class VideoSegmentsRequest(BaseModel):
+    segments: list[VideoSegmentItem]
 
 
 @app.post("/api/videos/download")
@@ -1092,6 +1111,61 @@ async def video_detail(video_id: str):
     detail["transcript_vi_path"] = v.get("transcript_vi_path", "")
     detail["translation_status"] = v.get("translation_status", "none")
     return detail
+
+
+@app.get("/api/videos/{video_id}/segments")
+async def video_segments_get(video_id: str):
+    if not video_lib.is_valid_video_id(video_id):
+        raise HTTPException(404, "Video not found")
+    v = await video_lib.get_video(video_id)
+    if not v:
+        raise HTTPException(404, "Video not found")
+    return merge_segments(video_id)
+
+
+@app.put("/api/videos/{video_id}/segments")
+async def video_segments_put(video_id: str, req: VideoSegmentsRequest):
+    if not video_lib.is_valid_video_id(video_id):
+        raise HTTPException(404, "Video not found")
+    v = await video_lib.get_video(video_id)
+    if not v:
+        raise HTTPException(404, "Video not found")
+    if not req.segments:
+        raise HTTPException(400, "Body segments không được rỗng.")
+    items = [s.model_dump() for s in req.segments]
+    try:
+        merged = apply_edits(video_id, items)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    await video_lib.update_video(
+        video_id,
+        edited=True,
+        transcript_text_len=len(merged.get("segments") or []),
+        segments_edited_at=video_lib.now_iso(),
+    )
+    return merged
+
+
+@app.put("/api/videos/{video_id}/segments/{index}")
+async def video_segment_put(video_id: str, index: int, req: VideoSegmentItem):
+    if not video_lib.is_valid_video_id(video_id):
+        raise HTTPException(404, "Video not found")
+    v = await video_lib.get_video(video_id)
+    if not v:
+        raise HTTPException(404, "Video not found")
+    item = req.model_dump()
+    item["index"] = index
+    try:
+        merged = apply_edits(video_id, [item])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    await video_lib.update_video(
+        video_id,
+        edited=True,
+        transcript_text_len=len(merged.get("segments") or []),
+        segments_edited_at=video_lib.now_iso(),
+    )
+    return merged
 
 
 @app.get("/api/videos/{video_id}/media")
@@ -1359,6 +1433,195 @@ async def video_dub_delete(video_id: str, dub_id: str):
         raise HTTPException(404, "Dub not found")
     shutil.rmtree(d, ignore_errors=True)
     return {"status": "deleted", "video_id": video_id, "dub_id": dub_id}
+
+
+# ─── Export Composer (MVP-7) ───
+
+class VideoComposeRequest(BaseModel):
+    source: str = "original"
+    dub_id: str | None = None
+    aspect_ratio: str = "original"
+    width: int = 1080
+    height: int = 1920
+    fit_mode: str = "contain"
+    background_color: str = "#000000"
+    subtitle_enabled: bool = False
+    subtitle_position: str = "bottom"
+    subtitle_y: float = 88.0
+    subtitle_font_size: int = 48
+    subtitle_color: str = "#FFFFFF"
+    subtitle_outline_color: str = "#000000"
+    subtitle_box: bool = False
+    subtitle_box_color: str = "#000000"
+    subtitle_box_opacity: float = 0.75
+    subtitle_margin_bottom: int = 60
+    subtitle_max_chars: int = 22
+    old_subtitle_mask_enabled: bool = False
+    old_subtitle_mask: dict | None = None
+    logo_enabled: bool = False
+    logo_asset_id: str | None = None
+    logo_position: str = "top-right"
+    logo_scale: float = 12.0
+    logo_opacity: float = 0.9
+    logo_margin: int = 20
+    logo_x: float = 50.0
+    logo_y: float = 50.0
+    trim_enabled: bool = False
+    trim_start: float = 0.0
+    trim_end: float = 0.0
+    timestamp: float = 3.0  # chỉ dùng cho compose-preview
+    output_name: str | None = None
+
+
+@app.post("/api/videos/{video_id}/compose")
+async def video_compose(video_id: str, req: VideoComposeRequest):
+    if not video_lib.is_valid_video_id(video_id):
+        raise HTTPException(404, "Video not found")
+    v = await video_lib.get_video(video_id)
+    if not v:
+        raise HTTPException(404, "Video not found")
+    opts = req.model_dump()
+    _, err = validate_compose_options(opts)
+    if err:
+        raise HTTPException(400, err)
+    job_id = await job_manager.create("cs", message="Đang khởi tạo job compose...")
+    asyncio.create_task(run_compose_job(job_id, video_id, opts))
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.get("/api/videos/compose/{job_id}")
+async def video_compose_status(job_id: str):
+    job = await job_manager.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    return {
+        "job_id": job["job_id"],
+        "status": job["status"],
+        "progress": job["progress"],
+        "message": job["message"],
+        "video_ids": job["video_ids"],
+        "error": job.get("error", ""),
+    }
+
+
+@app.get("/api/videos/{video_id}/exports")
+async def video_exports_list(video_id: str):
+    if not video_lib.is_valid_video_id(video_id):
+        raise HTTPException(404, "Video not found")
+    return list_exports(video_id)
+
+
+@app.get("/api/videos/{video_id}/exports/{export_id}")
+async def video_export_detail(video_id: str, export_id: str):
+    if not video_lib.is_valid_video_id(video_id) or not is_valid_export_id(export_id):
+        raise HTTPException(404, "Export not found")
+    d = export_dir(video_id, export_id)
+    meta_file = d / "metadata.json"
+    if not meta_file.exists():
+        raise HTTPException(404, "Export not found")
+    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    plan_file = d / "composer_plan.json"
+    if plan_file.exists():
+        meta["plan"] = json.loads(plan_file.read_text(encoding="utf-8"))
+    return meta
+
+
+@app.get("/api/videos/{video_id}/exports/{export_id}/media")
+async def video_export_media(video_id: str, export_id: str):
+    if not video_lib.is_valid_video_id(video_id) or not is_valid_export_id(export_id):
+        raise HTTPException(404, "Export not found")
+    p = export_dir(video_id, export_id) / "output_final.mp4"
+    if not p.exists():
+        raise HTTPException(404, "File not found")
+    return FileResponse(str(p), media_type="video/mp4")
+
+
+@app.post("/api/videos/{video_id}/exports/{export_id}/open-folder")
+async def video_export_open_folder(video_id: str, export_id: str):
+    if not video_lib.is_valid_video_id(video_id) or not is_valid_export_id(export_id):
+        raise HTTPException(404, "Export not found")
+    d = export_dir(video_id, export_id)
+    if not d.exists():
+        raise HTTPException(404, "Export not found")
+    try:
+        os.startfile(str(d))  # Windows-only — path đã guard nằm trong exports
+    except AttributeError:
+        raise HTTPException(400, "Chức năng này chỉ hỗ trợ Windows")
+    except OSError as e:
+        raise HTTPException(500, f"Không mở được folder: {e}")
+    return {"status": "opened"}
+
+
+@app.delete("/api/videos/{video_id}/exports/{export_id}")
+async def video_export_delete(video_id: str, export_id: str):
+    if not video_lib.is_valid_video_id(video_id) or not is_valid_export_id(export_id):
+        raise HTTPException(404, "Export not found")
+    d = export_dir(video_id, export_id)
+    if not d.exists():
+        raise HTTPException(404, "Export not found")
+    shutil.rmtree(d, ignore_errors=True)
+    return {"status": "deleted", "video_id": video_id, "export_id": export_id}
+
+
+@app.get("/api/videos/{video_id}/assets")
+async def video_assets_list(video_id: str):
+    if not video_lib.is_valid_video_id(video_id):
+        raise HTTPException(404, "Video not found")
+    return list_assets(video_id)
+
+
+@app.get("/api/videos/{video_id}/assets/logo/{asset_name}")
+async def video_assets_logo_image(video_id: str, asset_name: str):
+    """Phuc vu anh logo cho visual editor (chi doc tu assets dir da guard)."""
+    if not video_lib.is_valid_video_id(video_id):
+        raise HTTPException(404, "Video not found")
+    p = _get_asset_path(video_id, asset_name)
+    if p is None:
+        raise HTTPException(404, "Logo not found")
+    ext = p.suffix.lower().lstrip(".")
+    media_type = "image/png" if ext == "png" else "image/jpeg" if ext in ("jpg", "jpeg") else "image/webp"
+    return FileResponse(str(p), media_type=media_type)
+
+
+@app.post("/api/videos/{video_id}/compose-preview")
+async def video_compose_preview(video_id: str, req: VideoComposeRequest):
+    """Render 1 frame (jpg) voi cung filter graph cua compose — dung cho visual editor."""
+    if not video_lib.is_valid_video_id(video_id):
+        raise HTTPException(404, "Video not found")
+    v = await video_lib.get_video(video_id)
+    if not v:
+        raise HTTPException(404, "Video not found")
+    opts = req.model_dump()
+    _, err = validate_compose_options(opts)
+    if err:
+        raise HTTPException(400, err)
+    try:
+        result = await asyncio.to_thread(render_preview_frame, video_id, opts)
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(400, str(e))
+    return result
+
+
+@app.get("/api/videos/{video_id}/compose-preview/{preview_id}")
+async def video_compose_preview_image(video_id: str, preview_id: str):
+    if not video_lib.is_valid_video_id(video_id) or not is_valid_preview_id(preview_id):
+        raise HTTPException(404, "Preview not found")
+    p = preview_path(video_id, preview_id)
+    if not p.exists():
+        raise HTTPException(404, "Preview not found")
+    return FileResponse(str(p), media_type="image/jpeg")
+
+
+@app.post("/api/videos/{video_id}/assets/logo")
+async def video_assets_logo_upload(video_id: str, file: UploadFile = File(...)):
+    if not video_lib.is_valid_video_id(video_id):
+        raise HTTPException(404, "Video not found")
+    try:
+        data = await file.read()
+        name = save_logo_asset(video_id, file.filename or "", data)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"asset_id": name, "name": name, "status": "ok"}
 
 
 @app.delete("/api/videos/{video_id}")

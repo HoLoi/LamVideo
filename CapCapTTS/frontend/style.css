@@ -2774,3 +2774,197 @@ textarea::placeholder {
 	overflow-y: auto;
 	margin: 0;
 }
+/* ??? Export Composer (MVP-7) ??? */
+.compose-section { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px dashed var(--card-border); }
+.compose-section:last-of-type { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.compose-section-title { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 8px; }
+.compose-section input[type="range"] { width: 100%; }
+
+
+/* === Visual Editor (MVP-8) === */
+.composer-stage {
+	position: relative; width: 100%;
+	aspect-ratio: var(--cs-ar, 16 / 9);
+	max-width: calc(70vh * var(--cs-ar, 1.7778));
+	margin: 0 auto;
+	background: #000;
+	background-image: radial-gradient(circle at 25% 25%, #1b1b1b, #000 60%);
+	border-radius: var(--radius-sm);
+	overflow: hidden;
+	min-height: 200px;
+	user-select: none;
+	-webkit-user-select: none;
+	isolation: isolate;
+}
+.composer-stage video#composerVideo {
+	position: absolute; inset: 0; width: 100%; height: 100%;
+	object-fit: var(--cs-fit, contain); z-index: 1; background: transparent;
+}
+.composer-blur-video {
+	display: none; position: absolute; inset: 0; width: 100%; height: 100%;
+	object-fit: cover; filter: blur(18px) brightness(0.85); transform: scale(1.2); z-index: 0;
+}
+.composer-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.composer-mask {
+	position: absolute; display: none;
+	border: 2px dashed #fbbf24; background: rgba(251, 191, 36, 0.15);
+	cursor: move; pointer-events: auto; box-sizing: border-box; z-index: 6;
+}
+.composer-subtitle {
+	position: absolute; display: none; left: 4%; width: 92%; text-align: center;
+	color: #fff; font-weight: 700; user-select: none; z-index: 6; pointer-events: auto;
+	cursor: ns-resize; transform: translateY(-50%);
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.8);
+}
+.composer-logo {
+	position: absolute; display: none; cursor: move; pointer-events: auto; z-index: 6; box-sizing: border-box;
+}
+.composer-logo img { width: 100%; height: auto; display: block; pointer-events: none; }
+.composer-logo.no-asset {
+	border: 2px dashed rgba(255, 255, 255, 0.8); background: rgba(255, 255, 255, 0.14);
+	color: #fff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center;
+}
+.composer-logo.no-asset::after { content: "Logo"; }
+.composer-tag {
+	position: absolute; top: -9px; left: 2px; font-size: 9px; font-weight: 700; letter-spacing: 0.04em;
+	background: #111; color: #fbbf24; border: 1px solid #fbbf24; border-radius: 3px; padding: 0 4px;
+	white-space: nowrap; pointer-events: none; text-transform: uppercase;
+	text-shadow: none; line-height: 1.5;
+}
+.composer-subtitle .composer-tag { top: -12px; left: 0; }
+.composer-crop {
+	position: absolute; display: none;
+	border: 1px solid rgba(255, 255, 255, 0.55);
+	box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.25); pointer-events: none; z-index: 4;
+}
+.composer-frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; z-index: 7; }
+.composer-back-live {
+	position: absolute; top: 8px; right: 8px; z-index: 8;
+	background: rgba(0, 0, 0, 0.75); color: #fff; border: 1px solid rgba(255, 255, 255, 0.5);
+}
+.composer-stage-hint {
+	position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+	color: var(--text-muted); font-size: 12px; z-index: 2; pointer-events: none;
+}
+.eo-resize {
+	position: absolute; width: 12px; height: 12px; background: #fbbf24;
+	border: 1px solid #000; box-sizing: border-box;
+}
+.eo-nw { top: -6px; left: -6px; cursor: nwse-resize; }
+.eo-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+.eo-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+.eo-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+.editor-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.eo-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 11px; color: var(--text-muted); }
+.eo-label { font-weight: 600; text-transform: uppercase; font-size: 10px; min-width: 46px; }
+.eo-check { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); cursor: pointer; }
+.eo-seg { display: flex; gap: 4px; flex-wrap: wrap; }
+.eo-seg button { font-size: 11px; }
+.eo-seg button.eo-on { background: var(--accent, #4f7cff); color: #fff; border-color: transparent; }
+.editor-timeline { margin-top: 12px; }
+.editor-tbar {
+	position: relative; height: 24px; background: rgba(255, 255, 255, 0.08);
+	border-radius: 4px; overflow: hidden;
+}
+.editor-tfill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: rgba(74, 222, 128, 0.4); }
+.editor-tplay { position: absolute; top: 0; bottom: 0; width: 2px; background: #fbbf24; left: 0; }
+.editor-trow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; font-size: 11px; color: var(--text-muted); }
+.compose-advanced { margin-top: 14px; border-top: 1px dashed var(--card-border); padding-top: 10px; }
+.compose-advanced summary {
+	cursor: pointer; font-size: 11px; font-weight: 600; text-transform: uppercase;
+	color: var(--text-muted); user-select: none; display: inline-flex; align-items: center; gap: 6px;
+}
+.video-preview-wrap { position: relative; display: block; width: 100%; }
+
+/* === MVP-8.2: Ph? ?? & b?n d?ch (segment editor) === */
+.workflow-step {
+	display: inline-flex; align-items: center; gap: 8px;
+	font-size: 12px; font-weight: 700; color: var(--text-secondary);
+	text-transform: uppercase; letter-spacing: 0.03em;
+}
+.workflow-step b {
+	display: inline-flex; align-items: center; justify-content: center;
+	width: 20px; height: 20px; border-radius: 50%;
+	background: var(--accent, #4f7cff); color: #fff; font-size: 11px; font-weight: 700;
+}
+.seg-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 8px; }
+.seg-tab {
+	font-size: 11px; padding: 5px 10px; border: 1px solid var(--card-border);
+	border-radius: 999px; background: var(--card-bg); color: var(--text-secondary); cursor: pointer;
+}
+.seg-tab.active { background: var(--accent, #4f7cff); color: #fff; border-color: transparent; }
+.seg-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.seg-tools input[type="search"] {
+	flex: 1; min-width: 160px; padding: 5px 8px;
+	border: 1px solid var(--card-border); border-radius: var(--radius-sm);
+	font-size: 12px; background: var(--card-bg); color: var(--text-secondary);
+}
+.segment-list {
+	max-height: 460px; overflow: auto;
+	border: 1px solid var(--card-border); border-radius: var(--radius-sm);
+	padding: 8px; display: flex; flex-direction: column; gap: 8px;
+	background: color-mix(in srgb, var(--card-bg) 55%, transparent);
+}
+.segment-card {
+	border: 1px solid var(--card-border); border-radius: var(--radius-sm);
+	background: var(--card-bg); padding: 8px 10px;
+	transition: border-color 0.15s, box-shadow 0.15s;
+}
+.segment-card.seg-active {
+	border-color: var(--success, #4ade80);
+	box-shadow: 0 0 0 1px var(--success, #4ade80);
+}
+.segment-card.seg-dirty { border-left: 3px solid var(--warning, #fbbf24); }
+.seg-card-head {
+	display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;
+}
+.seg-idx {
+	display: inline-flex; align-items: center; justify-content: center;
+	width: 22px; height: 22px; border-radius: 50%;
+	background: var(--accent, #4f7cff); color: #fff;
+	font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.seg-card-body {
+	display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+@media (max-width: 640px) { .seg-card-body { grid-template-columns: 1fr; } }
+.seg-field { display: flex; flex-direction: column; gap: 3px; }
+.seg-field-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.seg-field textarea {
+	width: 100%; min-height: 46px; resize: vertical; font-size: 12px; padding: 4px 6px;
+	border: 1px solid var(--card-border); border-radius: 4px;
+	background: var(--card-bg); color: var(--text-secondary);
+	box-sizing: border-box; font-family: inherit; line-height: 1.45;
+}
+.seg-field textarea:focus { border-color: var(--accent, #4f7cff); outline: none; }
+.seg-card-actions { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.seg-time { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text-muted); font-size: 11px; cursor: pointer; }
+.seg-count { font-size: 10px; color: var(--text-muted); }
+.seg-count.warn { color: var(--warning); font-weight: 700; }
+.seg-badge {
+	display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px;
+	border-radius: 999px; text-transform: uppercase; white-space: nowrap;
+}
+.seg-badge.edited { color: var(--warning); border: 1px solid var(--warning); }
+.seg-badge.empty { color: var(--text-muted); border: 1px solid var(--card-border); }
+.seg-badge.too_long { color: var(--error); border: 1px solid var(--error); }
+.seg-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.seg-actions .btn-sm { padding: 3px 8px; font-size: 11px; }
+.seg-tin {
+	width: 56px; padding: 2px 4px; font-size: 11px; font-variant-numeric: tabular-nums;
+	border: 1px solid transparent; border-bottom: 1px dashed var(--card-border);
+	background: transparent; color: var(--text-secondary); border-radius: 3px;
+}
+.seg-tin:focus { border: 1px solid var(--accent, #4f7cff); outline: none; background: var(--card-bg); }
+.seg-arrow { margin: 0 3px; color: var(--text-muted); }
+.composer-source-badge {
+	position: absolute; top: 8px; left: 8px; z-index: 9;
+	background: rgba(0, 0, 0, 0.72); color: #4ade80;
+	border: 1px solid rgba(74, 222, 128, 0.6); border-radius: 999px;
+	font-size: 10px; font-weight: 700; letter-spacing: 0.03em;
+	padding: 3px 10px; pointer-events: none; white-space: nowrap;
+	backdrop-filter: blur(4px);
+}
+.composer-source-badge.badge-original {
+	color: #d1d5db; border-color: rgba(209, 213, 219, 0.45);
+}
