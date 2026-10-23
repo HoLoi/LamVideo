@@ -7,7 +7,7 @@
 	<title>CapCap TTS</title>
 	<link rel="icon" type="image/svg+xml" href="capcap.png">
 	<link rel="icon" type="image/x-icon" href="capcap.ico">
-	<link rel="stylesheet" href="style.css?v=segment-editor-20260820">
+	<link rel="stylesheet" href="style.css?v=workspace-ui-20260831">
 </head>
 
 <body>
@@ -88,7 +88,7 @@
 							<polyline points="7 10 12 15 17 10" />
 							<line x1="12" y1="15" x2="12" y2="3" />
 						</svg>
-						Tải video
+						Download Video
 					</span>
 					<input type="text" id="videoUrlInput" class="video-input" placeholder="Dán link video: Douyin / YouTube / TikTok / Facebook (https://...)">
 					<div id="videoUrlBadge" class="video-url-badge" style="display:none;"></div>
@@ -115,7 +115,7 @@
 						<span>Ẩn browser (bỏ tick nếu gặp captcha / login)</span>
 					</label>
 					<div class="video-actions">
-						<button class="btn btn-primary" id="videoDownloadBtn" style="width:100%;">Tải xuống</button>
+						<button class="btn btn-primary" id="videoDownloadBtn" style="width:100%;">Download</button>
 					</div>
 					<div class="video-job-status" id="videoJobStatus" style="display:none;margin-top:10px;">
 						<div class="progress-bar-bg">
@@ -135,7 +135,7 @@
 							<line x1="17" y1="2" x2="17" y2="22" />
 							<line x1="2" y1="12" x2="22" y2="12" />
 						</svg>
-						Thư viện video <span id="videoLibraryCount" style="font-weight:400;color:var(--text-muted);font-size:12px;"></span>
+						Video Library <span id="videoLibraryCount" style="font-weight:400;color:var(--text-muted);font-size:12px;"></span>
 					</span>
 					<div id="videoLibraryList" class="video-library-list">
 						<div class="no-chunks">Chưa có video nào. Dán link video ở card bên trái và bấm Download.</div>
@@ -144,422 +144,256 @@
 			</div>
 
 			<div class="card hidden" id="videoDetailCard" style="margin-top:16px;">
-				<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-<span class="card-title" style="margin-bottom:0;" id="videoDetailTitle">Video đã chọn</span>
-				<button class="btn-icon" id="videoDetailCloseBtn" title="Đóng">&times;</button>
-			</div>
-			<div class="video-detail-actions" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-				<span class="workflow-step"><b>1</b> Thông tin video &amp; phát thử</span>
-				<div style="display:flex;gap:8px;">
-					<button class="btn btn-secondary" id="videoOpenFolderBtn" style="padding:4px 10px;font-size:12px;">Mở thư mục</button>
-					<button class="btn btn-ghost" id="videoDeleteBtn" style="color:var(--error);padding:4px 10px;font-size:12px;">Xóa</button>
-				</div>
-			</div>
-			<div class="video-detail-grid">
-				<div class="video-preview-wrap">
-					<video id="videoPreview" controls></video>
-				</div>
-				<div class="video-meta" id="videoDetailMeta"></div>
-			</div>
-<div class="video-transcript" style="margin-top:14px;border-top:1px solid var(--card-border);padding-top:12px;">
-				<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-					<span class="workflow-step"><b>2</b> Phụ đề &amp; bản dịch</span>
-					<span id="videoSegStats" style="font-size:11px;color:var(--text-muted);"></span>
-				</div>
-				<section id="segmentEditorCard" style="margin-top:8px;">
-					<div id="videoSegBar" class="seg-toolbar" style="display:none;">
-						<div class="seg-tabs">
-							<button class="seg-tab active" data-segfilter="all">Tất cả</button>
-							<button class="seg-tab" data-segfilter="untranslated">Chưa dịch</button>
-							<button class="seg-tab" data-segfilter="edited">Đã sửa</button>
-							<button class="seg-tab" data-segfilter="long">Cảnh báo dài</button>
-						</div>
-						<div class="seg-tools">
-							<input type="search" id="videoSegSearch" placeholder="Tìm kiếm trong câu...">
-							<button class="btn-sm" id="videoSegSaveAllBtn" title="Lưu mọi câu đã sửa trong danh sách">Lưu tất cả</button>
-							<button class="btn-sm" id="videoSegReloadBtn">Làm mới</button>
-							<span id="videoTtsNotice" style="font-size:11px;color:var(--success);display:none;">Đã đưa text vào khung TTS</span>
-							<span id="videoTtsViNotice" style="font-size:11px;color:var(--success);display:none;">Đã đưa bản dịch vào khung TTS</span>
-						</div>
-					</div>
-					<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-						<button class="btn-sm" id="videoUseTranscriptBtn" disabled title="Đưa toàn bộ lời thoại gốc vào khung TTS bên trái">Đưa lời thoại gốc vào TTS</button>
-						<button class="btn-sm" id="videoTranslateBtn" disabled>Dịch sang tiếng Việt</button>
-						<button class="btn-sm" id="videoUseViTranscriptBtn" disabled title="Đưa toàn bộ bản dịch vào khung TTS bên trái">Đưa toàn bộ bản dịch vào TTS</button>
-					</div>
-					<div id="videoSegWarning" style="display:none;font-size:11px;color:var(--warning);margin-bottom:8px;line-height:1.5;"></div>
-					<div id="segmentList" class="segment-list" style="display:none;"></div>
-					<div id="videoSegEmpty" class="no-chunks" style="display:none;">Chưa có phụ đề. Hãy bấm Nhận dạng lời thoại trước.</div>
-					<div id="videoTranslateStatus" style="font-size:11px;color:var(--text-muted);display:none;margin-top:6px;"></div>
-					<details class="full-transcript-details">
-						<summary>Xem dạng văn bản đầy đủ</summary>
-						<div style="margin-top:10px;">
-							<span style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Lời thoại gốc</span>
-							<pre id="videoTranscriptText" class="video-transcript-text">Chưa có transcript — bấm Nhận dạng lời thoại.</pre>
-						</div>
-						<div style="margin-top:10px;">
-							<span style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Bản dịch tiếng Việt</span>
-							<pre id="videoTranscriptViText" class="video-transcript-text">Chưa có bản dịch — bấm "Dịch sang tiếng Việt".</pre>
-						</div>
-					</details>
-				</section>
-			</div>
-<div class="video-dub" style="margin-top:14px;border-top:1px solid var(--card-border);padding-top:12px;">
-				<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-					<span class="workflow-step"><b>3</b> Lồng tiếng Việt</span>
-					<span id="videoDubStatus" style="font-size:11px;color:var(--text-muted);text-align:right;"></span>
-				</div>
-				<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:8px;">
-					<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Chế độ âm thanh
-						<select id="dubAudioMode" onchange="onDubModeChange()" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-							<option value="mix" selected>Trộn với âm thanh gốc</option>
-							<option value="replace">Thay âm thanh gốc</option>
-							<option value="dub_only">Tắt âm gốc — chỉ giọng lồng</option>
-						</select>
-					</label>
-					<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Âm lượng gốc <span id="dubOriginalVolumeVal" style="color:var(--text-secondary);">5%</span>
-						<input type="range" id="dubOriginalVolume" min="0" max="100" step="1" value="5" oninput="onDubSlider('dubOriginalVolume','dubOriginalVolumeVal')">
-					</label>
-					<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Âm lượng giọng lồng <span id="dubDubVolumeVal" style="color:var(--text-secondary);">120%</span>
-						<input type="range" id="dubDubVolume" min="50" max="200" step="5" value="120" oninput="onDubSlider('dubDubVolume','dubDubVolumeVal')">
-					</label>
-					<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Tốc độ TTS tối đa <span id="dubMaxSpeedVal" style="color:var(--text-secondary);">1.25x</span>
-						<input type="range" id="dubMaxSpeed" min="100" max="150" step="5" value="125" oninput="onDubSlider('dubMaxSpeed','dubMaxSpeedVal')">
-					</label>
-					<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Giọng đọc
-						<select id="dubVoiceSelect" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);"></select>
-					</label>
-					<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Tên file xuất (không bắt buộc)
-						<input type="text" id="dubOutputName" placeholder="auto" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-					</label>
-				</div>
-				<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-					<span style="font-size:11px;color:var(--text-muted);">Tạo mẫu:</span>
-					<button class="btn-sm" onclick="applyDubPreset('almost')">Gần như tắt âm gốc</button>
-					<button class="btn-sm" onclick="applyDubPreset('mute')">Tắt hoàn toàn âm gốc</button>
-					<button class="btn-sm" onclick="applyDubPreset('quiet')">Thuyết minh trên nền êm</button>
-					<button class="btn-sm" onclick="applyDubPreset('remove')">Bỏ giọng gốc</button>
-					<button class="btn-sm" onclick="applyDubPreset('loud')">Giữ âm gốc to hơn</button>
-					<label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-left:8px;">
-						<input type="checkbox" id="dubBurnSubtitles"> Đốt phụ đề tiếng Việt vào video
-					</label>
-					<label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
-						<input type="checkbox" id="dubNormalizeAudio"> Chuẩn hoá âm lượng
-					</label>
-				</div>
-				<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">Lưu ý: giảm volume gốc sẽ giảm cả nhạc nền và thoại gốc. Mix chỉ giảm toàn bộ audio gốc chứ không tách riêng thoại — nếu vẫn còn nghe giọng gốc ở mode Mix, chọn Replace/Mute original. Tách riêng giọng nói gốc khỏi nhạc nền cần source separation (Demucs/UVR/MDX-Net) — chưa có.</div>
-				<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-					<button class="btn-sm" id="videoDubBtn" disabled>Lồng tiếng</button>
-					<button class="btn-sm" id="videoPreviewDubBtn" disabled>Xem thử bản lồng</button>
-					<button class="btn-sm" id="videoOpenDubFolderBtn" disabled>Mở thư mục xuất</button>
-				</div>
-			</div>
-			<div class="video-dub-outputs" style="margin-top:14px;border-top:1px solid var(--card-border);padding-top:12px;">
-				<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-					<span class="workflow-step"><b>4</b> Video đã lồng tiếng</span>
-					<span id="videoDubOutputsCount" style="font-size:11px;color:var(--text-muted);"></span>
-				</div>
-				<div id="videoDubOutputs" style="display:flex;flex-direction:column;gap:8px;"></div>
-				<pre id="videoDubPlanText" class="video-transcript-text" style="display:none;margin-top:8px;max-height:300px;overflow:auto;"></pre>
-			</div>
+				<div class="video-workspace">
 
-<div class="video-compose" style="margin-top:14px;border-top:1px solid var(--card-border);padding-top:12px;">
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-				<span class="workflow-step"><b>5</b> Chỉnh video &amp; xuất bản</span>
-				<span id="videoComposeStatus" style="font-size:11px;color:var(--text-muted);text-align:right;"></span>
-			</div>
+					<!-- ===================== LEFT: STICKY PREVIEW + SOURCE ===================== -->
+					<aside class="video-workspace-preview">
+						<div class="video-preview-head">
+							<span class="card-title" style="margin-bottom:0;" id="videoDetailTitle">Video</span>
+							<button class="btn-icon" id="videoDetailCloseBtn" title="Đóng">&times;</button>
+						</div>
 
-					<div class="editor-root">
-						<div class="composer-stage" id="composerStage">
-							<span id="composerSourceHint" class="composer-source-badge"></span>
-							<video id="composerVideo" controls playsinline></video>
-							<video id="composerBlurVideo" class="composer-blur-video" muted playsinline></video>
-							<div class="composer-overlay" id="composerOverlay">
-								<div class="composer-crop" id="composerCropFrame" title="Khung video gốc trong canvas"></div>
-								<div class="composer-mask" id="composerMaskOverlay" title="Vùng che phụ đề cũ — kéo khung để di chuyển, kéo góc để resize">
-									<span class="composer-tag">Che phụ đề cũ</span>
-									<span class="eo-resize eo-nw"></span><span class="eo-resize eo-ne"></span>
-									<span class="eo-resize eo-sw"></span><span class="eo-resize eo-se"></span>
+						<div class="ws-source-bar">
+							<span class="ws-source-label">Đang xem:</span>
+							<select id="workspaceSourceSelect" onchange="workspaceSourceChange()"></select>
+							<span id="workspaceSourceBadge" class="ws-source-badge">gốc</span>
+						</div>
+
+						<div class="video-preview-wrap">
+							<video id="videoPreview" controls></video>
+							<div id="composerMaskLayer"></div>
+							<div id="composerSubtitleOverlay" class="composer-subtitle-overlay" style="display:none;"></div>
+						</div>
+
+						<div class="workspace-preview-meta" id="workspacePreviewMeta"></div>
+						<div class="video-detail-actions">
+							<button class="btn btn-secondary" id="videoOpenFolderBtn">Mở thư mục</button>
+							<button class="btn btn-ghost" id="videoDeleteBtn" style="color:var(--error);">Xóa video</button>
+						</div>
+						<div class="video-meta" id="videoDetailMeta"></div>
+					</aside>
+
+					<!-- ===================== RIGHT: TOOLS ===================== -->
+					<main class="video-workspace-tools">
+						<div class="ws-tabs">
+							<button class="ws-tab active" data-ws="segments" onclick="workspaceTab('segments', this)">1 · Phụ đề &amp; bản dịch</button>
+							<button class="ws-tab" data-ws="dub" onclick="workspaceTab('dub', this)">2 · Lồng tiếng</button>
+							<button class="ws-tab" data-ws="compose" onclick="workspaceTab('compose', this)">3 · Chỉnh video</button>
+							<button class="ws-tab" data-ws="outputs" onclick="workspaceTab('outputs', this)">4 · Video đã tạo</button>
+							<button class="ws-tab" data-ws="export" onclick="workspaceTab('export', this)">5 · Xuất video</button>
+						</div>
+
+						<!-- ===== Panel 1: Phụ đề & bản dịch ===== -->
+						<div class="ws-panel active" id="ws-segments">
+							<div class="ws-panel-title">
+								<span>Phụ đề &amp; bản dịch tiếng Việt</span>
+								<span id="videoTranslateStatus" style="font-size:11px;color:var(--text-muted);"></span>
+							</div>
+
+							<div class="video-transcript">
+								<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap;">
+									<span style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Transcript gốc</span>
+									<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+										<span id="videoTtsNotice" style="font-size:11px;color:var(--success);display:none;">Đã đưa text vào khung TTS</span>
+										<button class="btn-sm" id="videoUseTranscriptBtn" disabled>Đưa bản gốc vào TTS</button>
+										<button class="btn-sm" id="videoTranslateBtn" disabled>Dịch sang tiếng Việt</button>
+									</div>
 								</div>
-								<div class="composer-subtitle" id="composerSubtitleOverlay" title="Phụ đề — kéo lên/xuống để đặt vị trí">
-									<span class="composer-tag">Phụ đề tiếng Việt</span><span id="composerSubSampleText">Phụ đề tiếng Việt</span>
+								<pre id="videoTranscriptText" class="video-transcript-text">Chưa có transcript — bấm Transcribe ở Video Library.</pre>
+								<div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 8px;gap:8px;flex-wrap:wrap;">
+									<span style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Bản dịch tiếng Việt</span>
+									<div style="display:flex;gap:8px;align-items:center;">
+										<span id="videoTtsViNotice" style="font-size:11px;color:var(--success);display:none;">Đã đưa bản dịch vào khung TTS</span>
+										<button class="btn-sm" id="videoUseViTranscriptBtn" disabled>Đưa bản dịch vào TTS</button>
+									</div>
 								</div>
-								<div class="composer-logo" id="composerLogoOverlay" title="Logo — kéo để di chuyển, kéo góc dưới phải để đổi kích thước">
-									<img id="composerLogoImg" alt="logo" src="">
-									<span class="composer-tag">Logo</span>
-									<span class="eo-resize eo-se"></span>
+								<pre id="videoTranscriptViText" class="video-transcript-text">Chưa có bản dịch — bấm "Dịch sang tiếng Việt".</pre>
+								<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Dịch dùng provider bên ngoài (Google Translate miễn phí) — cần kết nối Internet, không cần API key.</div>
+							</div>
+
+							<!-- Segment editor -->
+							<div class="segment-editor" style="margin-top:14px;border-top:1px solid var(--card-border);padding-top:12px;">
+								<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+									<span style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Chỉnh sửa từng đoạn</span>
+									<span id="segmentEditorStatus" style="font-size:11px;color:var(--text-muted);"></span>
+								</div>
+								<div id="segmentList" class="segment-list">
+									<div class="no-chunks">Chưa tải được danh sách đoạn.</div>
 								</div>
 							</div>
-							<img id="composerFrameImg" class="composer-frame" alt="preview frame" src="" style="display:none;">
-							<button class="btn-sm composer-back-live" id="composerBackLiveBtn" style="display:none;">Về xem trực tiếp</button>
-							<div class="composer-stage-hint" id="composerStageHint">Đang tải video preview…</div>
 						</div>
-						<div class="editor-controls">
-							<div class="eo-row">
-<span class="eo-label">Khung hình</span>
-							<div class="eo-seg" id="eoAspectSeg">
-								<button class="btn-sm" data-aspect="original" title="Giữ tỉ lệ video gốc">Gốc</button>
-								<button class="btn-sm" data-aspect="9:16" title="TikTok / Reels / Shorts">9:16</button>
-								<button class="btn-sm" data-aspect="16:9" title="YouTube">16:9</button>
-								<button class="btn-sm" data-aspect="1:1" title="Vuông">1:1</button>
-								<button class="btn-sm" data-aspect="4:5" title="Mạng xã hội">4:5</button>
+
+						<!-- ===== Panel 2: Lồng tiếng ===== -->
+						<div class="ws-panel" id="ws-dub">
+							<div class="ws-panel-title">
+								<span>Lồng tiếng tự động (Auto Dub tiếng Việt)</span>
+								<span id="videoDubStatus" style="font-size:11px;color:var(--text-muted);text-align:right;"></span>
 							</div>
-							</div>
-							<div class="eo-row">
-<span class="eo-label">Căn khung</span>
-							<div class="eo-seg" id="eoFitSeg">
-								<button class="btn-sm" data-fit="contain">Vừa khung</button>
-								<button class="btn-sm" data-fit="cover">Crop đầy</button>
-								<button class="btn-sm" data-fit="blurred_background">Nền mờ</button>
-							</div>
-							</div>
-							<div class="eo-row">
-								<label class="eo-check"><input type="checkbox" id="eoSubsToggle"> Phụ đề</label>
-								<label class="eo-check"><input type="checkbox" id="eoMaskToggle"> Che phụ đề cũ</label>
-								<label class="eo-check"><input type="checkbox" id="eoLogoToggle"> Logo</label>
-							</div>
-							<div class="eo-row" id="eoSubPosRow" style="display:none;">
-<span class="eo-label">Vị trí</span>
-							<div class="eo-seg" id="eoSubPosSeg">
-								<button class="btn-sm" data-subpos="top">Trên</button>
-								<button class="btn-sm" data-subpos="middle">Giữa</button>
-								<button class="btn-sm" data-subpos="bottom">Dưới</button>
-							</div>
-							</div>
-							<div class="eo-row" id="eoMaskModeRow" style="display:none;">
-<span class="eo-label">Kiểu</span>
-							<div class="eo-seg" id="eoMaskModeSeg">
-								<button class="btn-sm" data-maskmode="blur">Làm mờ</button>
-								<button class="btn-sm" data-maskmode="box">Nền đặc</button>
-							</div>
-							</div>
-							<div class="eo-row" id="eoLogoSizeRow" style="display:none;">
-								<span class="eo-label">Logo</span>
-								<label style="display:flex;align-items:center;gap:4px;">Kích thước <span id="eoLogoScaleVal">12</span>%
-									<input type="range" id="eoLogoScale" min="2" max="60" step="1" value="12" style="width:90px;">
+							<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:8px;">
+								<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Chế độ audio
+									<select id="dubAudioMode" onchange="onDubModeChange()" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
+										<option value="mix" selected>Mix với bản gốc</option>
+										<option value="replace">Thay audio gốc</option>
+										<option value="dub_only">Tắt tiếng gốc + chỉ dub</option>
+									</select>
 								</label>
-								<label style="display:flex;align-items:center;gap:4px;">Độ mờ <span id="eoLogoOpacityVal">90</span>%
-									<input type="range" id="eoLogoOpacity" min="10" max="100" step="5" value="90" style="width:90px;">
+								<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Volume gốc <span id="dubOriginalVolumeVal" style="color:var(--text-secondary);">5%</span>
+									<input type="range" id="dubOriginalVolume" min="0" max="100" step="1" value="5" oninput="onDubSlider('dubOriginalVolume','dubOriginalVolumeVal')">
+								</label>
+								<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Volume tiếng dub <span id="dubDubVolumeVal" style="color:var(--text-secondary);">120%</span>
+									<input type="range" id="dubDubVolume" min="50" max="200" step="5" value="120" oninput="onDubSlider('dubDubVolume','dubDubVolumeVal')">
+								</label>
+								<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Tốc độ TTS tối đa <span id="dubMaxSpeedVal" style="color:var(--text-secondary);">1.25x</span>
+									<input type="range" id="dubMaxSpeed" min="100" max="150" step="5" value="125" oninput="onDubSlider('dubMaxSpeed','dubMaxSpeedVal')">
+								</label>
+								<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Giọng đọc
+									<select id="dubVoiceSelect" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);"></select>
+								</label>
+								<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Tên output (tùy chọn)
+									<input type="text" id="dubOutputName" placeholder="auto" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
 								</label>
 							</div>
-							<div class="eo-row">
-<span class="eo-label">Xem thử</span>
-							<input type="number" id="editPreviewTs" value="3.0" step="0.5" min="0" style="width:64px;padding:3px 6px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-							<button class="btn-sm" id="editorPreviewBtn" title="Render 1 khung hình bằng đúng filter graph của backend">Xem thử khung hình</button>
-							<button class="btn-sm" id="editorExportBtn">Xuất video</button>
-								<span id="editorPreviewNote" style="font-size:11px;color:var(--text-muted);"></span>
-							</div>
-						</div>
-						<div class="editor-timeline">
-							<div class="editor-tbar" id="editorTBar">
-								<div class="editor-tfill" id="editorTFill"></div>
-								<div class="editor-tplay" id="editorTPlay"></div>
-							</div>
-							<div class="editor-trow">
-								<label class="eo-check"><input type="checkbox" id="editTrimEnabled"> Cắt đoạn</label>
-								<span id="editorTrimDur" style="font-size:11px;color:var(--text-muted);"></span>
-								<label style="display:flex;align-items:center;gap:4px;">Start (s)
-									<input type="number" id="editTrimStart" step="0.1" min="0" style="width:70px;padding:3px 6px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
+							<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+								<span style="font-size:11px;color:var(--text-muted);">Preset:</span>
+								<button class="btn-sm" onclick="applyDubPreset('almost')">Gần như tắt gốc</button>
+								<button class="btn-sm" onclick="applyDubPreset('mute')">Tắt gốc hoàn toàn</button>
+								<button class="btn-sm" onclick="applyDubPreset('quiet')">Lồng trên nền gốc nhỏ</button>
+								<button class="btn-sm" onclick="applyDubPreset('remove')">Bỏ giọng gốc</button>
+								<button class="btn-sm" onclick="applyDubPreset('loud')">Giữ gốc to hơn</button>
+								<label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-left:8px;">
+									<input type="checkbox" id="dubBurnSubtitles"> Đốt phụ đề tiếng Việt
 								</label>
-								<label style="display:flex;align-items:center;gap:4px;">End (s)
-									<input type="number" id="editTrimEnd" step="0.1" min="0" style="width:70px;padding:3px 6px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
+								<label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
+									<input type="checkbox" id="dubNormalizeAudio"> Chuẩn hóa độ ồn
 								</label>
-								<button class="btn-sm" id="editTrimStartBtn" title="Lấy thời điểm hiện tại của video làm điểm cắt đầu">Đặt điểm cắt đầu</button>
-								<button class="btn-sm" id="editTrimEndBtn" title="Lấy thời điểm hiện tại làm điểm cắt cuối">Đặt điểm cắt cuối</button>
-								<button class="btn-sm" id="editTrimResetBtn">Xóa cắt đoạn</button>
+							</div>
+							<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">Lưu ý: giảm volume gốc sẽ giảm cả nhạc nền và thoại gốc. Mix chỉ giảm toàn bộ audio gốc chứ không tách riêng thoại — nếu vẫn còn nghe giọng gốc ở mode Mix, chọn Replace/Mute original. Tách riêng giọng nói gốc khỏi nhạc nền cần source separation (Demucs/UVR/MDX-Net) — chưa có.</div>
+							<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+								<button class="btn-sm" id="videoDubBtn" disabled>Tạo video lồng tiếng</button>
+								<button class="btn-sm" id="videoPreviewDubBtn" disabled>Xem trước bản dub</button>
+								<button class="btn-sm" id="videoOpenDubFolderBtn" disabled>Mở thư mục output</button>
 							</div>
 						</div>
-						<img id="editorFrameImg" alt="" style="display:none;margin-top:4px;max-height:220px;border-radius:var(--radius-sm);border:1px solid var(--card-border);">
-					</div>
 
-					<details class="compose-advanced" id="composeAdvanced">
-						<summary>6. Thiết lập nâng cao</summary>
-						<div class="compose-section" style="margin-top:10px;">
-						<div class="compose-section-title">1. Nguồn video</div>
-						<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Nguồn
-								<select id="composeSource" onchange="videoComposeToggle()" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-									<option value="original" selected>Video gốc</option>
-									<option value="latest_dub">Video lồng tiếng mới nhất</option>
-									<option value="dub_output">Chọn bản lồng cụ thể</option>
-								</select>
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;display:none;" id="composeDubSelectWrap">Bản lồng cụ thể
-								<select id="composeDubSelect" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);"></select>
-							</label>
-						</div>
-					</div>
-
-					<div class="compose-section">
-						<div class="compose-section-title">2. Khung hình</div>
-						<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Tỉ lệ khung
-								<select id="composeAspect" onchange="videoComposeToggle()" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-									<option value="original" selected>Gốc</option>
-									<option value="9:16">9:16 — TikTok/Reels/Shorts (1080x1920)</option>
-									<option value="16:9">16:9 — YouTube (1920x1080)</option>
-									<option value="1:1">1:1 — Vuông (1080x1080)</option>
-									<option value="4:5">4:5 — Mạng xã hội (1080x1350)</option>
-									<option value="custom">Tùy chỉnh...</option>
-								</select>
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Cách căn khung
-								<select id="composeFit" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-									<option value="contain" selected>Vừa khung (giữ đủ video, thêm nền)</option>
-									<option value="cover">Crop đầy khung</option>
-									<option value="blurred_background">Nền mờ phía sau</option>
-									<option value="stretch">Kéo giãn — không khuyến nghị</option>
-								</select>
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;display:none;" id="composeCustomSizeWrap">Kích thước tuỳ chỉnh
-								<span style="display:flex;gap:6px;">
-									<input type="number" id="composeWidth" value="1080" min="2" max="4096" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);width:50%;">
-									<input type="number" id="composeHeight" value="1920" min="2" max="4096" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);width:50%;">
-								</span>
-							</label>
-						</div>
-					</div>
-
-					<div class="compose-section">
-						<div class="compose-section-title">
-							<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);">
-								<input type="checkbox" id="composeSubsEnabled" onchange="videoComposeToggle()"> 3. Phụ đề (đốt vào video, từ bản dịch tiếng Việt)
-							</label>
-						</div>
-						<div id="composeSubsControls" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Vị trí
-								<select id="composeSubPos" onchange="videoComposeToggle()" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-									<option value="bottom" selected>Dưới</option>
-									<option value="middle">Giữa</option>
-									<option value="top">Trên</option>
-									<option value="custom">Vị trí Y tuỳ chỉnh</option>
-								</select>
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;display:none;" id="composeSubYWrap">Vị trí Y <span id="composeSubYVal" style="color:var(--text-secondary);">88%</span>
-								<input type="range" id="composeSubY" min="5" max="95" step="1" value="88" oninput="onComposeSlider('composeSubY','composeSubYVal','%')">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Cỡ chữ
-								<input type="number" id="composeFontSize" value="48" min="8" max="200" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Màu chữ
-								<input type="color" id="composeSubColor" value="#FFFFFF" style="padding:2px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--card-bg);height:28px;">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Màu viền
-								<input type="color" id="composeSubOutline" value="#000000" style="padding:2px;border:1px solid var(--card-border);border-radius:var(--radius-sm);background:var(--card-bg);height:28px;">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;"><input type="checkbox" id="composeSubBox" onchange="videoComposeToggle()"> Nền hộp phụ đề</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;display:none;" id="composeSubBoxAlphaWrap">Độ mờ nền <span id="composeSubBoxAlphaVal" style="color:var(--text-secondary);">75%</span>
-								<input type="range" id="composeSubBoxAlpha" min="10" max="100" step="5" value="75" oninput="onComposeSlider('composeSubBoxAlpha','composeSubBoxAlphaVal','%')">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Cách đáy (px)
-								<input type="number" id="composeSubMargin" value="60" min="0" max="500" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Tối đa ký tự / dòng
-								<input type="number" id="composeSubMaxChars" value="22" min="8" max="200" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-							</label>
-						</div>
-					</div>
-
-					<div class="compose-section">
-						<div class="compose-section-title">
-							<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);">
-								<input type="checkbox" id="composeMaskEnabled" onchange="videoComposeToggle()"> 4. Che phụ đề cũ (vùng cố định)
-							</label>
-						</div>
-						<div id="composeMaskControls" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Kiểu
-								<select id="composeMaskMode" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-									<option value="blur" selected>Làm mờ vùng</option>
-									<option value="box">Nền đặc</option>
-								</select>
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">X <span id="composeMaskXVal" style="color:var(--text-secondary);">5%</span>
-								<input type="range" id="composeMaskX" min="0" max="95" step="1" value="5" oninput="onComposeSlider('composeMaskX','composeMaskXVal','%')">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Y <span id="composeMaskYVal" style="color:var(--text-secondary);">78%</span>
-								<input type="range" id="composeMaskY" min="0" max="95" step="1" value="78" oninput="onComposeSlider('composeMaskY','composeMaskYVal','%')">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Rộng <span id="composeMaskWVal" style="color:var(--text-secondary);">90%</span>
-								<input type="range" id="composeMaskW" min="5" max="100" step="1" value="90" oninput="onComposeSlider('composeMaskW','composeMaskWVal','%')">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Cao <span id="composeMaskHVal" style="color:var(--text-secondary);">14%</span>
-								<input type="range" id="composeMaskH" min="2" max="60" step="1" value="14" oninput="onComposeSlider('composeMaskH','composeMaskHVal','%')">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Độ mạnh làm mờ
-								<input type="number" id="composeMaskBlur" value="18" min="1" max="100" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;display:none;" id="composeMaskBoxOpacityWrap">Độ mờ nền <span id="composeMaskBoxOpacityVal" style="color:var(--text-secondary);">85%</span>
-								<input type="range" id="composeMaskBoxOpacity" min="20" max="100" step="5" value="85" oninput="onComposeSlider('composeMaskBoxOpacity','composeMaskBoxOpacityVal','%')">
-							</label>
-							<div style="grid-column:1/-1;font-size:11px;color:var(--warning);line-height:1.5;">Lưu ý: blur/box chỉ che vùng bạn chọn. App chưa tự nhận diện phụ đề cũ trong video.</div>
-						</div>
-					</div>
-
-					<div class="compose-section">
-						<div class="compose-section-title">
-							<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);">
-								<input type="checkbox" id="composeLogoEnabled" onchange="videoComposeToggle()"> 5. Logo / chữ ký
-							</label>
-						</div>
-						<div id="composeLogoControls" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Tải logo lên (png/jpg/webp)
-								<span style="display:flex;gap:6px;">
-									<input type="file" id="composeLogoFile" accept=".png,.jpg,.jpeg,.webp" style="font-size:11px;flex:1;">
-									<button class="btn-sm" onclick="videoUploadLogo()">Tải lên</button>
-								</span>
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">File logo
-								<select id="composeLogoAsset" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);"></select>
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Vị trí
-								<select id="composeLogoPos" onchange="videoComposeToggle()" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-									<option value="top-left">Trên trái</option>
-									<option value="top-right" selected>Trên phải</option>
-									<option value="bottom-left">Dưới trái</option>
-									<option value="bottom-right">Dưới phải</option>
-									<option value="center">Chính giữa</option>
-									<option value="custom">Vị trí X/Y tuỳ chỉnh</option>
-								</select>
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Kích thước <span id="composeLogoScaleVal" style="color:var(--text-secondary);">12%</span>
-								<input type="range" id="composeLogoScale" min="2" max="60" step="1" value="12" oninput="onComposeSlider('composeLogoScale','composeLogoScaleVal','%')">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Độ mờ <span id="composeLogoOpacityVal" style="color:var(--text-secondary);">90%</span>
-								<input type="range" id="composeLogoOpacity" min="10" max="100" step="5" value="90" oninput="onComposeSlider('composeLogoOpacity','composeLogoOpacityVal','%')">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Khoảng cách (px)
-								<input type="number" id="composeLogoMargin" value="20" min="0" max="500" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-							</label>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;display:none;" id="composeLogoXYWrap">Vị trí X/Y tuỳ chỉnh
-								<span style="display:flex;gap:6px;">
-									<input type="number" id="composeLogoX" value="90" min="0" max="100" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);width:50%;">
-									<input type="number" id="composeLogoY" value="10" min="0" max="100" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);width:50%;">
-								</span>
-							</label>
-						</div>
-					</div>
-
-					<div class="compose-section">
-						<div class="compose-section-title">6. Xuất video</div>
-						<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-							<button class="btn-sm" id="videoComposeBtn">Tạo video cuối</button>
-							<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;">Tên file (không bắt buộc)
-								<input type="text" id="composeOutputName" placeholder="auto" style="padding:5px 8px;border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;background:var(--card-bg);color:var(--text-secondary);">
-							</label>
-						</div>
-						<div id="videoComposeJobStatus" style="display:none;margin-top:8px;font-size:11px;color:var(--warning);"></div>
-						<div style="margin-top:12px;border-top:1px solid var(--card-border);padding-top:10px;">
-							<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-								<span style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;">Video đã xuất</span>
-								<span id="videoComposeExportsCount" style="font-size:11px;color:var(--text-muted);"></span>
+						<!-- ===== Panel 3: Chỉnh video ===== -->
+						<div class="ws-panel" id="ws-compose">
+							<div class="ws-panel-title">
+								<span>Chỉnh video (Che chữ cũ + thêm phụ đề)</span>
+								<span id="videoComposeStatus" style="font-size:11px;color:var(--text-muted);text-align:right;"></span>
 							</div>
-							<div id="videoComposeExports" style="display:flex;flex-direction:column;gap:8px;"></div>
+
+							<!-- Section: Che chữ/phụ đề cũ -->
+							<div style="margin-bottom:14px;padding:10px;border:1px solid var(--card-border);border-radius:var(--radius-md);">
+								<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+									<label style="font-size:12px;color:var(--text-secondary);font-weight:600;display:flex;align-items:center;gap:6px;">
+										<input type="checkbox" id="composeMaskEnabled" onchange="videoComposeToggle()">
+										Che chữ/phụ đề cũ (nhiều vùng)
+									</label>
+									<button class="btn-sm" id="composeMaskAddBtn" style="display:none;" onclick="videoComposeAddMask()">+ Thêm vùng che</button>
+								</div>
+								<div id="composeMaskList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;"></div>
+								<div id="composeMaskEditor" style="display:none;padding-top:8px;border-top:1px dashed var(--card-border);">
+									<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;font-size:11px;color:var(--text-muted);">
+										<label style="display:flex;flex-direction:column;gap:3px;">Chế độ
+											<select id="composeMaskMode" onchange="videoComposeMaskFormChanged()">
+												<option value="blur">Làm mờ</option>
+												<option value="box">Hộp che</option>
+											</select>
+										</label>
+										<label style="display:flex;flex-direction:column;gap:3px;">X <input type="number" id="composeMaskX" min="0" max="100" oninput="videoComposeMaskFormChanged()"></label>
+										<label style="display:flex;flex-direction:column;gap:3px;">Y <input type="number" id="composeMaskY" min="0" max="100" oninput="videoComposeMaskFormChanged()"></label>
+										<label style="display:flex;flex-direction:column;gap:3px;">W <input type="number" id="composeMaskW" min="1" max="100" oninput="videoComposeMaskFormChanged()"></label>
+										<label style="display:flex;flex-direction:column;gap:3px;">H <input type="number" id="composeMaskH" min="1" max="100" oninput="videoComposeMaskFormChanged()"></label>
+										<label style="display:flex;flex-direction:column;gap:3px;">Độ mờ (blur) <input type="range" id="composeMaskBlur" min="0" max="50" oninput="videoComposeMaskFormChanged()"></label>
+										<label style="display:flex;flex-direction:column;gap:3px;">Opacity nền <input type="range" id="composeMaskBoxOpacity" min="0" max="100" oninput="videoComposeMaskFormChanged()"></label>
+									</div>
+								</div>
+							</div>
+
+							<!-- Section: Thêm phụ đề mới -->
+							<div style="margin-bottom:14px;padding:10px;border:1px solid var(--card-border);border-radius:var(--radius-md);">
+								<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+									<label style="font-size:12px;color:var(--text-secondary);font-weight:600;display:flex;align-items:center;gap:6px;">
+										<input type="checkbox" id="composeSubsEnabled" onchange="videoComposeSubsToggle()">
+										Thêm phụ đề tiếng Việt
+									</label>
+									<div style="font-size:11px;color:var(--text-muted);">preset cỡ chữ:</div>
+								</div>
+								<div id="composeSubsControls" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;font-size:11px;color:var(--text-muted);">
+									<label style="display:flex;flex-direction:column;gap:3px;">Vị trí
+										<select id="composeSubsPosition" onchange="videoComposeSubsFormChanged()">
+											<option value="bottom">Dưới</option>
+											<option value="middle">Giữa</option>
+											<option value="top">Trên</option>
+										</select>
+									</label>
+									<label style="display:flex;flex-direction:column;gap:3px;">Cỡ chữ <span id="composeSubsFontSizeVal" style="color:var(--text-secondary);">48</span>
+										<input type="range" id="composeSubsFontSize" min="20" max="96" value="48" oninput="videoComposeFontRangeChanged()">
+									</label>
+									<label style="display:flex;flex-direction:column;gap:3px;">Màu chữ <input type="color" id="composeSubsColor" value="#FFFFFF" onchange="videoComposeSubsFormChanged()"></label>
+									<label style="display:flex;flex-direction:column;gap:3px;">Màu viền <input type="color" id="composeSubsOutlineColor" value="#000000" onchange="videoComposeSubsFormChanged()"></label>
+									<label style="display:flex;flex-direction:column;gap:3px;">Độ dày viền <input type="range" id="composeSubsOutlineWidth" min="0" max="10" value="2" oninput="videoComposeSubsFormChanged()"></label>
+									<label style="display:flex;flex-direction:column;gap:3px;align-items:flex-start;">Nền chữ <input type="checkbox" id="composeSubsBox" onchange="videoComposeSubsFormChanged()"></label>
+									<label style="display:flex;flex-direction:column;gap:3px;">Độ mờ nền <input type="range" id="composeSubsBoxOpacity" min="0" max="100" value="75" oninput="videoComposeSubsFormChanged()"></label>
+									<label style="display:flex;flex-direction:column;gap:3px;">Cách đáy <input type="range" id="composeSubsMarginBottom" min="0" max="200" value="60" oninput="videoComposeSubsFormChanged()"></label>
+								</div>
+								<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+									<button class="btn-sm" data-fs="28" onclick="composeSetFontPreset(28)">Nhỏ</button>
+									<button class="btn-sm" data-fs="46" onclick="composeSetFontPreset(46)">Vừa</button>
+									<button class="btn-sm" data-fs="64" onclick="composeSetFontPreset(64)">Lớn</button>
+									<button class="btn-sm" data-fs="88" onclick="composeSetFontPreset(88)">Rất lớn</button>
+								</div>
+								<div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.5;">
+									Mẹo: bật "Che chữ/phụ đề cũ" rồi bấm <strong>+ Thêm vùng che</strong>. Trên video, click vùng che để chọn (viền nổi bật), kéo để di chuyển, kéo 4 góc để resize. Bật "Thêm phụ đề tiếng Việt" rồi kéo/điều chỉnh cỡ chữ. Thứ tự FFmpeg: <code>fit → mask → logo → phụ đề</code>.
+								</div>
+								<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+									<button class="btn-sm" id="videoComposeBtn" disabled>Xuất với cài đặt này</button>
+									<button class="btn-sm" id="videoComposePreviewBtn" disabled>Cập nhật Preview</button>
+									<button class="btn-sm" id="videoOpenComposeFolderBtn" disabled style="color:var(--error);">Xóa overlay preview</button>
+								</div>
 							</div>
 						</div>
-					</details>
+
+						<!-- ===== Panel 4: Video đã tạo ===== -->
+						<div class="ws-panel" id="ws-outputs">
+							<div class="ws-panel-title">
+								<span>Video đã tạo</span>
+								<span id="videoDubOutputsCount" style="font-size:11px;color:var(--text-muted);"></span>
+							</div>
+							<div style="margin-bottom:14px;">
+								<div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:8px;">Các bản lồng tiếng (Dub)</div>
+								<div id="videoDubOutputs" style="display:flex;flex-direction:column;gap:8px;"></div>
+								<pre id="videoDubPlanText" class="video-transcript-text" style="display:none;margin-top:8px;max-height:300px;overflow:auto;"></pre>
+							</div>
+							<div>
+								<div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:8px;">Bản export chỉnh video (Compose)</div>
+								<div id="videoExportsList" style="display:flex;flex-direction:column;gap:8px;">
+									<div class="no-chunks">Chưa có bản export nào — mở tab "Chỉnh video" và bấm Xuất.</div>
+								</div>
+							</div>
+						</div>
+
+						<!-- ===== Panel 5: Xuất video cuối ===== -->
+						<div class="ws-panel" id="ws-export">
+							<div class="ws-panel-title">
+								<span>Xuất video cuối cùng</span>
+							</div>
+							<div class="export-summary">
+								<div class="export-summary-row"><span>Nguồn đang dùng:</span><span id="exportSourceLabel">—</span></div>
+								<div class="export-summary-row"><span>Che chữ/phụ đề cũ:</span><span id="exportMaskLabel">Tắt</span></div>
+								<div class="export-summary-row"><span>Thêm phụ đề tiếng Việt:</span><span id="exportSubsLabel">Tắt</span></div>
+							</div>
+							<div class="video-detail-actions" style="margin-top:12px;">
+								<button class="btn" id="videoFinalExportBtn">Xuất video cuối cùng</button>
+								<button class="btn btn-secondary" id="videoOpenFinalFolderBtn">Mở thư mục video gốc</button>
+							</div>
+							<div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.5;">
+								"Xuất video cuối cùng" chạy lại bước Chỉnh video trên nguồn hiện tại (bản gốc hoặc bản dub/lồng tiếng) với cài đặt che chữ + phụ đề như ở tab 3. Kết quả nằm trong thư mục video.
+							</div>
+						</div>
+					</main>
 				</div>
 			</div>
-		</div>
 
 		<div class="main-layout">
 			<!-- LEFT PANEL -->
@@ -1333,7 +1167,7 @@
 
 
 
-		<script src="app.js?v=segment-editor-20260820"></script>
+		<script src="app.js?v=workspace-ui-20260831"></script>
 		<script src="jszip.min.js"></script>
 </body>
 

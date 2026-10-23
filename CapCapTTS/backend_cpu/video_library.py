@@ -151,6 +151,38 @@ def write_transcript_vi(video_id: str, result: dict) -> str:
     return text
 
 
+def update_segment(video_id: str, lang: str, index: int,
+                   start=None, end=None, text=None) -> dict | None:
+    """Cập nhật 1 segment trong transcript.json (lang='original') hoặc
+    transcript_vi.json (lang='vi'). Trả về segment đã cập nhật, None nếu index lệch."""
+    if lang not in ("original", "vi"):
+        raise ValueError("lang phai la 'original' hoac 'vi'")
+    file = "transcript.json" if lang == "original" else "transcript_vi.json"
+    try:
+        d = video_dir(video_id)
+        p = d / file
+        if not p.exists():
+            return None
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    segs = data.get("segments") or []
+    if index < 0 or index >= len(segs):
+        return None
+    seg = segs[index]
+    if start is not None:
+        seg["start"] = float(start)
+    if end is not None:
+        seg["end"] = float(end)
+    if text is not None:
+        seg["text"] = text
+    try:
+        p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        return None
+    return seg
+
+
 def get_duration(video_id: str) -> float | None:
     """Đọc duration trong metadata.json nếu đã probe."""
     try:

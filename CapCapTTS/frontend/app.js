@@ -2404,6 +2404,20 @@ let VIDEO_TL_POLL = null;
 let VIDEO_DB_POLL = null;
 let VIDEO_CURRENT_ID = null;
 let VIDEO_DUB_SELECTED = null;
+let CURRENT_WORKING_SOURCE = 'original'; // 'original' | 'dub' | 'export'
+let CURRENT_DUB_ID = null;
+let CURRENT_EXPORT_ID = null;
+let WORKSPACE_DUBS = [];
+let WORKSPACE_EXPORTS = [];
+let WORKSPACE_ORIG_SEGMENTS = [];
+let WORKSPACE_VI_SEGMENTS = [];
+let WORKSPACE_CURRENT_SEGMENT = -1;
+let SEGMENT_EDITOR_LOADED = false;
+
+let COMPOSE_MASKS = [];
+let COMPOSE_MASK_SELECTED = null;
+let COMPOSE_SUBS_ENABLED = false;
+let COMPOSE_STATE_INIT = false;
 
 function videoEsc(s) {
 	return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2506,11 +2520,11 @@ function videoRenderLibrary(videos) {
 			</div>
 			<div class="video-item-meta">${videoStatusBadge(v.status)}<span class="video-item-progress" id="videoItemProg_${videoEsc(v.id)}" style="display:none;"></span></div>
 			<div class="video-item-actions">
-				<button class="btn-sm" data-action="select" data-id="${videoEsc(v.id)}">Chọn</button>
-				<button class="btn-sm" data-action="transcribe" data-id="${videoEsc(v.id)}" ${v.status === 'transcribing' ? 'disabled' : ''}>Nhận dạng lời thoại</button>
-				<button class="btn-sm" data-action="tts" data-id="${videoEsc(v.id)}" ${hasTr ? '' : 'disabled'} title="${hasTr ? '' : 'Cần nhận dạng lời thoại trước'}">Đưa vào đọc giọng</button>
-				<button class="btn-sm" data-action="open" data-id="${videoEsc(v.id)}">Mở thư mục</button>
-				<button class="btn-sm" data-action="delete" data-id="${videoEsc(v.id)}" style="color:var(--error);">Xóa</button>
+				<button class="btn-sm" data-action="select" data-id="${videoEsc(v.id)}">Select</button>
+				<button class="btn-sm" data-action="transcribe" data-id="${videoEsc(v.id)}" ${v.status === 'transcribing' ? 'disabled' : ''}>Transcribe</button>
+				<button class="btn-sm" data-action="tts" data-id="${videoEsc(v.id)}" ${hasTr ? '' : 'disabled'} title="${hasTr ? '' : 'Cần transcribe trước'}">Send to TTS</button>
+				<button class="btn-sm" data-action="open" data-id="${videoEsc(v.id)}">Open Folder</button>
+				<button class="btn-sm" data-action="delete" data-id="${videoEsc(v.id)}" style="color:var(--error);">Delete</button>
 			</div>
 		</div>`;
 	}).join('');
@@ -2712,11 +2726,11 @@ async function videoOpenDetail(id) {
 		if (!res.ok) throw new Error('Không tải được video');
 		const v = await res.json();
 		VIDEO_CURRENT_ID = v.id;
-		console.debug('[open] video', v.id);
 		document.getElementById('videoDetailCard').classList.remove('hidden');
 		document.getElementById('videoDetailTitle').textContent = v.title || v.id;
 		const preview = document.getElementById('videoPreview');
 		preview.src = `${API_BASE}/api/videos/${encodeURIComponent(v.id)}/media`;
+		preview.setAttribute('data-ws-source', 'original:original');
 		preview.load();
 
 		const hasTranscript = (v.transcript && v.transcript.text) || v.status === 'transcribed';
@@ -2728,10 +2742,10 @@ async function videoOpenDetail(id) {
 		document.getElementById('videoTtsViNotice').style.display = 'none';
 		document.getElementById('videoTranscriptText').textContent = hasTranscript
 			? (v.transcript && v.transcript.text) || 'Đã có transcript (xem chi tiết khi tải lại).'
-			: 'Chưa có transcript — bấm Nhận dạng lời thoại.';
+			: 'Chưa có transcript — bấm Transcribe ở Video Library.';
 		document.getElementById('videoTranscriptViText').textContent = hasVi
 			? (v.transcript_vi_text || (v.transcript_vi && v.transcript_vi.text))
-			: 'Chưa có bản dịch — bấm "Dịch sang tiếng Việt".';
+			: 'Chưa có bản dịch — bấm "Translate to Vietnamese".';
 
 		const tlStatus = v.translation_status || 'none';
 		const tlStatusEl = document.getElementById('videoTranslateStatus');
@@ -2770,10 +2784,23 @@ async function videoOpenDetail(id) {
 		videoRenderDubState(v.id, v);
 		VIDEO_DUB_SELECTED = null;
 		videoRenderDubs(v.id);
-		videoComposeInit(v.id);
-		videoEditorInit(v.id);
-		videoLoadSegments(v.id);
-		videoSegBindPreview();
+
+		// MVP-8.4: populate subtitle/transcript segment arrays for compose preview
+		window.VIDEO_VI_SEGMENTS = (v.transcript_vi && v.transcript_vi.segments) || null;
+		window.VIDEO_TRANSCRIPT_SEGMENTS = (v.transcript && v.transcript.segments) || null;
+
+		// MVP-8.5: workspace source state + exports + segment editor
+		workspaceClear();
+		workspaceLoadExports(v.id);
+		workspaceLoadSegments(v.id);
+		videoRenderDubs(v.id); // re-render to rebuild source select with exports + dubs
+
+		videoComposeReset();
+		videoComposeSyncOverlay();
+		videoComposeResetOverlay();
+		videoComposeRefreshButtons();
+		workspaceUpdateExportSummary();
+		videoEditorInit();
 	} catch (e) {
 		videoShowError('Không mở được video: ' + e.message);
 	}
@@ -2870,8 +2897,10 @@ async function videoRenderDubs(id) {
 		if (!res.ok) throw new Error(`Lỗi ${res.status}`);
 		const items = await res.json();
 		countEl.textContent = items.length ? `${items.length} output` : '';
+		WORKSPACE_DUBS = items;
 		if (!items.length) {
 			container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">Chưa có dub output nào — tạo ở trên.</div>';
+			workspaceRenderSourceSelect();
 			return;
 		}
 		const modeLabel = { mix: 'Mix', replace: 'Replace', dub_only: 'Dub only', original_only: 'Original only' };
@@ -2885,13 +2914,14 @@ async function videoRenderDubs(id) {
 				+ ' · ' + videoEsc(m.voice_id || '') + ' · burn ' + (m.burn_subtitles ? 'yes' : 'no')
 				+ ' · ' + (m.warnings_count || 0) + ' warnings · ' + videoFmtSize(m.size_bytes) + '</div></div>'
 				+ '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">'
-				+ `<button class="btn-sm" onclick="videoDubCardAction('${videoEsc(id)}','${videoEsc(m.dub_id)}','preview')">Xem thử</button>`
-				+ `<button class="btn-sm" onclick="videoDubCardAction('${videoEsc(id)}','${videoEsc(m.dub_id)}','open')">Mở thư mục</button>`
-				+ `<a class="btn-sm" href="${API_BASE}/api/videos/${encodeURIComponent(id)}/dubs/${encodeURIComponent(m.dub_id)}/media" download style="text-decoration:none;">Tải MP4</a>`
-				+ `<button class="btn-sm" onclick="videoDubCardAction('${videoEsc(id)}','${videoEsc(m.dub_id)}','plan')">Xem kế hoạch</button>`
-				+ `<button class="btn-sm" onclick="videoDubCardAction('${videoEsc(id)}','${videoEsc(m.dub_id)}','delete')" style="color:var(--error);">Xóa</button>`
+				+ `<button class="btn-sm" onclick="videoDubCardAction('${videoEsc(id)}','${videoEsc(m.dub_id)}','preview')">Preview</button>`
+				+ `<button class="btn-sm" onclick="videoDubCardAction('${videoEsc(id)}','${videoEsc(m.dub_id)}','open')">Open Folder</button>`
+				+ `<a class="btn-sm" href="${API_BASE}/api/videos/${encodeURIComponent(id)}/dubs/${encodeURIComponent(m.dub_id)}/media" download style="text-decoration:none;">Download MP4</a>`
+				+ `<button class="btn-sm" onclick="videoDubCardAction('${videoEsc(id)}','${videoEsc(m.dub_id)}','plan')">View Plan</button>`
+				+ `<button class="btn-sm" onclick="videoDubCardAction('${videoEsc(id)}','${videoEsc(m.dub_id)}','delete')" style="color:var(--error);">Delete</button>`
 				+ '</div></div>';
 		}).join('');
+		workspaceRenderSourceSelect();
 	} catch (e) {
 		container.innerHTML = '<div style="font-size:11px;color:var(--error);">Không tải được danh sách output: ' + videoEsc(e.message) + '</div>';
 	}
@@ -2901,22 +2931,23 @@ async function videoDubCardAction(id, dubId, action) {
 	videoClearError();
 	if (action === 'preview') {
 		VIDEO_DUB_SELECTED = dubId;
+		CURRENT_WORKING_SOURCE = 'dub';
+		CURRENT_DUB_ID = dubId;
+		CURRENT_EXPORT_ID = null;
 		const preview = document.getElementById('videoPreview');
 		preview.src = `${API_BASE}/api/videos/${encodeURIComponent(id)}/dubs/${encodeURIComponent(dubId)}/media`;
+		preview.setAttribute('data-ws-source', 'dub:' + dubId);
 		preview.load();
 		preview.play().catch(() => { });
 		const statusEl = document.getElementById('videoDubStatus');
 		statusEl.style.color = 'var(--success)';
 		statusEl.textContent = 'Đang xem output ' + dubId + ' (output.mp4).';
-		// Section 5 (composer) chuyển sang đúng dub này
-		const srcSel = document.getElementById('composeSource');
-		const dubSel = document.getElementById('composeDubSelect');
-		if (srcSel) srcSel.value = 'dub_output';
-		if (dubSel) dubSel.value = dubId;
-		videoComposeToggle();
-		composerStageSyncSource();
-		console.debug('[dub-preview]', id, dubId, '-> composer source = dub_output, dub_id =', dubId);
+		workspaceSyncSourceUI();
+		workspaceRenderSourceSelect();
 		videoRenderDubs(id);
+		videoComposeSyncOverlay();
+		videoComposeRenderSubtitle();
+		workspaceUpdateExportSummary();
 		return;
 	}
 	if (action === 'open') {
@@ -2963,7 +2994,15 @@ async function videoDubCardAction(id, dubId, action) {
 			const data = await res.json().catch(() => ({}));
 			if (!res.ok) { videoShowError(data.detail || `Lỗi ${res.status}`); return; }
 			if (VIDEO_DUB_SELECTED === dubId) VIDEO_DUB_SELECTED = null;
+			if (CURRENT_WORKING_SOURCE === 'dub' && CURRENT_DUB_ID === dubId) {
+				CURRENT_WORKING_SOURCE = 'original';
+				CURRENT_DUB_ID = null;
+				CURRENT_EXPORT_ID = null;
+				workspaceSyncSourceUI();
+				workspaceRenderSourceSelect();
+			}
 			videoRenderDubs(id);
+			workspaceUpdateExportSummary();
 		} catch (e) {
 			videoShowError('Không kết nối được server: ' + e.message);
 		}
@@ -2978,23 +3017,19 @@ async function videoAutoSelectLatestDub(id) {
 		if (!items.length) return;
 		const latest = items[0];
 		VIDEO_DUB_SELECTED = latest.dub_id;
+		CURRENT_WORKING_SOURCE = 'dub';
+		CURRENT_DUB_ID = latest.dub_id;
+		CURRENT_EXPORT_ID = null;
 		const preview = document.getElementById('videoPreview');
 		preview.src = `${API_BASE}/api/videos/${encodeURIComponent(id)}/dubs/${encodeURIComponent(latest.dub_id)}/media`;
+		preview.setAttribute('data-ws-source', 'dub:' + latest.dub_id);
 		preview.load();
 		preview.play().catch(() => { });
 		const statusEl = document.getElementById('videoDubStatus');
 		statusEl.style.color = 'var(--success)';
 		statusEl.textContent = 'Đã lồng tiếng — đang xem output mới nhất: ' + latest.dub_id;
-		// Composer tự chuyển sang đúng dub mới nhất (source=dub_output + dub_id)
-		const srcSel = document.getElementById('composeSource');
-		const dubSel = document.getElementById('composeDubSelect');
-		if (srcSel) {
-			srcSel.value = 'dub_output';
-			if (dubSel) dubSel.value = latest.dub_id;
-			videoComposeToggle();
-			composerStageSyncSource();
-		}
-		console.debug('[dub-auto-select]', id, '-> composer source = dub_output, dub_id =', latest.dub_id);
+		workspaceSyncSourceUI();
+		workspaceRenderSourceSelect();
 		videoRenderDubs(id);
 	} catch (e) { /* im lặng */ }
 }
@@ -3080,6 +3115,11 @@ function videoPollDub(jobId, videoId) {
 function videoPreviewDub(id) {
 	videoClearError();
 	const preview = document.getElementById('videoPreview');
+	if (VIDEO_DUB_SELECTED) {
+		CURRENT_WORKING_SOURCE = 'dub';
+		CURRENT_DUB_ID = VIDEO_DUB_SELECTED;
+		CURRENT_EXPORT_ID = null;
+	}
 	const src = VIDEO_DUB_SELECTED
 		? `${API_BASE}/api/videos/${encodeURIComponent(id)}/dubs/${encodeURIComponent(VIDEO_DUB_SELECTED)}/media`
 		: `${API_BASE}/api/videos/${encodeURIComponent(id)}/dubbed-media`;
@@ -3091,6 +3131,11 @@ function videoPreviewDub(id) {
 	statusEl.textContent = VIDEO_DUB_SELECTED
 		? `Đang xem output ${VIDEO_DUB_SELECTED}.`
 		: 'Đang xem bản lồng tiếng mới nhất (output_dubbed.mp4).';
+	if (VIDEO_DUB_SELECTED) {
+		workspaceSyncSourceUI();
+		workspaceRenderSourceSelect();
+		workspaceUpdateExportSummary();
+	}
 }
 
 async function videoOpenDubFolder(id) {
@@ -3102,908 +3147,6 @@ async function videoOpenDubFolder(id) {
 		const res = await fetch(url, { method: 'POST' });
 		const data = await res.json().catch(() => ({}));
 		if (!res.ok) videoShowError(data.detail || `Lỗi ${res.status}`);
-	} catch (e) {
-		videoShowError('Không kết nối được server: ' + e.message);
-	}
-}
-
-// ─── Export Composer (MVP-7) ───
-
-let COMPOSE_POLL = null;
-let COMPOSE_CURRENT_ID = null;
-
-function onComposeSlider(sliderId, labelId, suffix) {
-	document.getElementById(labelId).textContent = document.getElementById(sliderId).value + (suffix || '');
-}
-
-function videoComposeToggle() {
-	const source = document.getElementById('composeSource').value;
-	document.getElementById('composeDubSelectWrap').style.display = source === 'dub_output' ? 'flex' : 'none';
-	document.getElementById('composeCustomSizeWrap').style.display =
-		document.getElementById('composeAspect').value === 'custom' ? 'flex' : 'none';
-
-	const subs = document.getElementById('composeSubsEnabled').checked;
-	const subControls = document.getElementById('composeSubsControls');
-	subControls.style.opacity = subs ? '1' : '0.4';
-	subControls.style.pointerEvents = subs ? 'auto' : 'none';
-	document.getElementById('composeSubYWrap').style.display =
-		(subs && document.getElementById('composeSubPos').value === 'custom') ? 'flex' : 'none';
-	document.getElementById('composeSubBoxAlphaWrap').style.display =
-		(subs && document.getElementById('composeSubBox').checked) ? 'flex' : 'none';
-
-	const mask = document.getElementById('composeMaskEnabled').checked;
-	const maskControls = document.getElementById('composeMaskControls');
-	maskControls.style.opacity = mask ? '1' : '0.4';
-	maskControls.style.pointerEvents = mask ? 'auto' : 'none';
-	document.getElementById('composeMaskBoxOpacityWrap').style.display =
-		(mask && document.getElementById('composeMaskMode').value === 'box') ? 'flex' : 'none';
-
-	const logo = document.getElementById('composeLogoEnabled').checked;
-	const logoControls = document.getElementById('composeLogoControls');
-	logoControls.style.opacity = logo ? '1' : '0.4';
-	logoControls.style.pointerEvents = logo ? 'auto' : 'none';
-	document.getElementById('composeLogoXYWrap').style.display =
-		(logo && document.getElementById('composeLogoPos').value === 'custom') ? 'flex' : 'none';
-}
-
-async function videoComposeInit(id) {
-	COMPOSE_CURRENT_ID = id;
-	videoComposeToggle();
-	try {
-		const [dubsRes, assetsRes, exportsRes] = await Promise.all([
-			fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/dubs`),
-			fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/assets`),
-			fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/exports`),
-		]);
-		const dubs = await dubsRes.json().catch(() => []);
-		const assets = await assetsRes.json().catch(() => []);
-		videoRenderComposeExports(await exportsRes.json().catch(() => []));
-
-		const dubSel = document.getElementById('composeDubSelect');
-		dubSel.innerHTML = '';
-		for (const d of dubs) {
-			const opt = document.createElement('option');
-			opt.value = d.dub_id;
-			opt.textContent = `${d.dub_id} · ${d.audio_mode || ''} ${d.created_at || ''}`;
-			dubSel.appendChild(opt);
-		}
-
-		// Mặc định: có dub output -> chọn bản lồng mới nhất (source=dub_output + dub_id),
-		// composer preview dùng media của dub đó; chưa có dub -> video gốc.
-		// Nhánh này chạy sau await fetch dubs (tức sau videoEditorInit đặt VIDEO_EDITOR_ID),
-		// nên composerStageSyncSource() đổi src ngay, không chờ user đụng vào.
-		const srcSel = document.getElementById('composeSource');
-		const selectedDub = dubs.length ? dubs[0].dub_id : null;
-		if (srcSel) srcSel.value = selectedDub ? 'dub_output' : 'original';
-		if (selectedDub && dubSel) dubSel.value = selectedDub;
-		videoComposeToggle();
-		console.debug('[compose-init] video', id, '| dubs', dubs.length, '| selectedDub', selectedDub,
-			'| source', srcSel ? srcSel.value : null,
-			'| src', document.getElementById('composerVideo') ? document.getElementById('composerVideo').getAttribute('src') : null);
-		composerStageSyncSource();
-
-		const assetSel = document.getElementById('composeLogoAsset');
-		assetSel.innerHTML = '';
-		if (!assets.length) {
-			assetSel.innerHTML = '<option value="">(chưa có logo — upload ở trên)</option>';
-		} else {
-			for (const a of assets) {
-				const opt = document.createElement('option');
-				opt.value = a.name;
-				opt.textContent = a.name;
-				assetSel.appendChild(opt);
-			}
-		}
-	} catch (e) {
-		/* im lặng — form vẫn dùng được cho original source */
-	}
-}
-
-function videoComposeBody() {
-	const mask = {
-		x: parseInt(document.getElementById('composeMaskX').value, 10),
-		y: parseInt(document.getElementById('composeMaskY').value, 10),
-		w: parseInt(document.getElementById('composeMaskW').value, 10),
-		h: parseInt(document.getElementById('composeMaskH').value, 10),
-		mode: document.getElementById('composeMaskMode').value,
-		blur: parseInt(document.getElementById('composeMaskBlur').value, 10),
-		box_opacity: (parseInt(document.getElementById('composeMaskBoxOpacity').value, 10) || 85) / 100,
-	};
-	return {
-		source: document.getElementById('composeSource').value,
-		dub_id: document.getElementById('composeSource').value === 'dub_output'
-			? (document.getElementById('composeDubSelect').value || null) : null,
-		aspect_ratio: document.getElementById('composeAspect').value,
-		width: parseInt(document.getElementById('composeWidth').value, 10) || 1080,
-		height: parseInt(document.getElementById('composeHeight').value, 10) || 1920,
-		fit_mode: document.getElementById('composeFit').value,
-		subtitle_enabled: document.getElementById('composeSubsEnabled').checked,
-		subtitle_position: document.getElementById('composeSubPos').value,
-		subtitle_y: parseFloat(document.getElementById('composeSubY').value) || 88,
-		subtitle_font_size: parseInt(document.getElementById('composeFontSize').value, 10) || 48,
-		subtitle_color: document.getElementById('composeSubColor').value,
-		subtitle_outline_color: document.getElementById('composeSubOutline').value,
-		subtitle_box: document.getElementById('composeSubBox').checked,
-		subtitle_box_opacity: (parseInt(document.getElementById('composeSubBoxAlpha').value, 10) || 75) / 100,
-		subtitle_margin_bottom: parseInt(document.getElementById('composeSubMargin').value, 10) || 60,
-		subtitle_max_chars: parseInt(document.getElementById('composeSubMaxChars').value, 10) || 22,
-		old_subtitle_mask_enabled: document.getElementById('composeMaskEnabled').checked,
-		old_subtitle_mask: mask,
-		logo_enabled: document.getElementById('composeLogoEnabled').checked,
-		logo_asset_id: document.getElementById('composeLogoEnabled').checked
-			? (document.getElementById('composeLogoAsset').value || null) : null,
-		logo_position: document.getElementById('composeLogoPos').value,
-		logo_scale: parseFloat(document.getElementById('composeLogoScale').value) || 12,
-		logo_opacity: (parseInt(document.getElementById('composeLogoOpacity').value, 10) || 90) / 100,
-		logo_margin: parseInt(document.getElementById('composeLogoMargin').value, 10) || 20,
-		logo_x: parseFloat(document.getElementById('composeLogoX').value) || 50,
-		logo_y: parseFloat(document.getElementById('composeLogoY').value) || 50,
-		trim_enabled: document.getElementById('editTrimEnabled').checked,
-		trim_start: parseFloat(document.getElementById('editTrimStart').value) || 0,
-		trim_end: parseFloat(document.getElementById('editTrimEnd').value) || 0,
-		output_name: document.getElementById('composeOutputName').value.trim() || null,
-	};
-}
-
-// ─── Visual Editor (MVP-8) ───
-
-let EDITOR_READY = false;
-let VIDEO_EDITOR_ID = null;
-
-function editorClampPercent(v, min, max) {
-	v = parseFloat(v);
-	if (!isFinite(v)) return 0;
-	return Math.max(min === undefined ? 0 : min, Math.min(max === undefined ? 100 : max, v));
-}
-
-function composerStageSize() {
-	const r = document.getElementById('composerStage').getBoundingClientRect();
-	return { w: r.width || 480, h: r.height || 270 };
-}
-
-function editorLogoUrl() {
-	const asset = document.getElementById('composeLogoAsset').value;
-	return asset ? `${API_BASE}/api/videos/${encodeURIComponent(VIDEO_EDITOR_ID || '')}/assets/logo/${encodeURIComponent(asset)}` : '';
-}
-
-function composerMediaUrl() {
-	if (!VIDEO_EDITOR_ID) return '';
-	const id = encodeURIComponent(VIDEO_EDITOR_ID);
-	const src = document.getElementById('composeSource').value;
-	if (src === 'dub_output') {
-		const dub = document.getElementById('composeDubSelect').value;
-		return dub ? `${API_BASE}/api/videos/${id}/dubs/${encodeURIComponent(dub)}/media` : `${API_BASE}/api/videos/${id}/dubbed-media`;
-	}
-	if (src === 'latest_dub') return `${API_BASE}/api/videos/${id}/dubbed-media`;
-	return `${API_BASE}/api/videos/${id}/media`;
-}
-
-function composerStageSyncSource() {
-	const v = document.getElementById('composerVideo');
-	const blur = document.getElementById('composerBlurVideo');
-	const url = composerMediaUrl();
-	if (!url) return;
-	if (v.getAttribute('src') !== url) {
-		v.src = url;
-		if (blur) blur.src = url;
-		v.load();
-	}
-	console.debug('[composer] src ->', url);
-	const hint = document.getElementById('composerSourceHint');
-	if (hint) {
-		const sel = document.getElementById('composeSource');
-		const src = sel ? sel.value : 'original';
-		if (src === 'latest_dub') hint.textContent = 'Đang chỉnh: Video đã lồng tiếng mới nhất';
-		else if (src === 'dub_output') {
-			const did = (document.getElementById('composeDubSelect') || {}).value || null;
-			hint.textContent = did ? ('Đang chỉnh: Video đã lồng tiếng · ' + did) : 'Đang chỉnh: bản lồng tiếng';
-		}
-		else hint.textContent = 'Đang chỉnh: Video gốc';
-		hint.classList.toggle('badge-original', src === 'original');
-	}
-}
-
-function editorBindDrag(el, apply) {
-	let st = null;
-	el.addEventListener('pointerdown', (e) => {
-		if (e.target.classList.contains('eo-resize')) return;
-		e.preventDefault();
-		e.stopPropagation();
-		el.setPointerCapture(e.pointerId);
-		const r = el.parentElement.getBoundingClientRect();
-		const px = (e.clientX - r.left) / r.width * 100;
-		const py = (e.clientY - r.top) / r.height * 100;
-		st = { offX: px - parseFloat(el.style.left || '0'), offY: py - parseFloat(el.style.top || '0') };
-	});
-	el.addEventListener('pointermove', (e) => {
-		if (!st) return;
-		const r = el.parentElement.getBoundingClientRect();
-		const px = (e.clientX - r.left) / r.width * 100;
-		const py = (e.clientY - r.top) / r.height * 100;
-		apply(px - st.offX, py - st.offY);
-	});
-	const clear = () => { st = null; };
-	el.addEventListener('pointerup', clear);
-	el.addEventListener('pointercancel', clear);
-}
-
-function editorBindResize(el, apply) {
-	let st = null;
-	for (const handle of el.querySelectorAll('.eo-resize')) {
-		handle.addEventListener('pointerdown', (e) => {
-			e.preventDefault();
-			e.stopPropagation();
-			el.setPointerCapture(e.pointerId);
-			const r = el.parentElement.getBoundingClientRect();
-			st = {
-				px: e.clientX, py: e.clientY,
-				x: parseFloat(el.style.left || '0'), y: parseFloat(el.style.top || '0'),
-				w: parseFloat(el.style.width || '0'), h: parseFloat(el.style.height || '0'),
-				r, east: handle.classList.contains('eo-ne') || handle.classList.contains('eo-se'),
-				south: handle.classList.contains('eo-sw') || handle.classList.contains('eo-se'),
-			};
-		});
-		handle.addEventListener('pointermove', (e) => {
-			if (!st) return;
-			const dx = (e.clientX - st.px) / st.r.width * 100;
-			const dy = (e.clientY - st.py) / st.r.height * 100;
-			let w = st.w, h = st.h, x = st.x, y = st.y;
-			if (st.east) w = st.w + dx; else { x = st.x + dx; w = st.w - dx; }
-			if (st.south) h = st.h + dy; else { y = st.y + dy; h = st.h - dy; }
-			apply(x, y, w, h);
-		});
-		const clear = () => { st = null; };
-		handle.addEventListener('pointerup', clear);
-		handle.addEventListener('pointercancel', clear);
-	}
-}
-
-// ── form → editor ──
-
-function editorPlaceMask() {
-	const el = document.getElementById('composerMaskOverlay');
-	const on = document.getElementById('composeMaskEnabled').checked;
-	if (!on) { el.style.display = 'none'; return; }
-	el.style.display = 'block';
-	const x = parseFloat(document.getElementById('composeMaskX').value) || 5;
-	const y = parseFloat(document.getElementById('composeMaskY').value) || 78;
-	const w = parseFloat(document.getElementById('composeMaskW').value) || 90;
-	const h = parseFloat(document.getElementById('composeMaskH').value) || 14;
-	el.style.left = x + '%';
-	el.style.top = y + '%';
-	el.style.width = w + '%';
-	el.style.height = h + '%';
-}
-
-function editorSubSegmentAt(t) {
-	return subtitleSegmentAt(TRANSCRIPT_SEGMENTS, t);
-}
-
-function editorSyncSubtitleOverlay() {
-	const el = document.getElementById('composerSubtitleOverlay');
-	const on = document.getElementById('composeSubsEnabled').checked;
-	if (!on) { el.style.display = 'none'; return; }
-	const v = document.getElementById('composerVideo');
-	const playing = v && !v.paused && isFinite(v.currentTime);
-	let text = null;
-	if (TRANSCRIPT_SEGMENTS.length) {
-		if (playing) {
-			const seg = editorSubSegmentAt(v.currentTime);
-			if (seg) text = subtitleWrapPreview(seg.text_vi || seg.text_original, 2, 42);
-		} else {
-			const seg = editorSubSegmentAt(v ? v.currentTime : 0) || TRANSCRIPT_SEGMENTS[0];
-			if (seg) text = subtitleWrapPreview(seg.text_vi || seg.text_original, 2, 42);
-		}
-	}
-	if (!text && !playing) text = 'Phụ đề tiếng Việt';
-	el.style.display = text ? 'block' : 'none';
-	document.getElementById('composerSubSampleText').textContent = text || '';
-}
-
-function editorPlaceSubtitle() {
-	const el = document.getElementById('composerSubtitleOverlay');
-	const on = document.getElementById('composeSubsEnabled').checked;
-	if (!on) { el.style.display = 'none'; return; }
-	el.style.display = 'block';
-	const pos = document.getElementById('composeSubPos').value;
-	let y;
-	if (pos === 'custom') y = parseFloat(document.getElementById('composeSubY').value) || 88;
-	else if (pos === 'top') y = 10;
-	else if (pos === 'middle') y = 50;
-	else y = 88;
-	const { h } = composerStageSize();
-	const fs = parseInt(document.getElementById('composeFontSize').value, 10) || 48;
-	el.style.fontSize = Math.max(12, Math.round(h * fs / 720)) + 'px';
-	el.style.top = y + '%';
-	editorSyncSubtitleOverlay();
-	if (document.getElementById('composeSubBox').checked) {
-		const a = (parseInt(document.getElementById('composeSubBoxAlpha').value, 10) || 75) / 100;
-		el.style.background = `rgba(5,5,5,${a})`;
-		el.style.padding = '2px 12px';
-		el.style.borderRadius = '4px';
-	} else {
-		el.style.background = 'transparent';
-		el.style.padding = '0';
-	}
-}
-
-function editorPlaceLogo() {
-	const el = document.getElementById('composerLogoOverlay');
-	const img = document.getElementById('composerLogoImg');
-	const on = document.getElementById('composeLogoEnabled').checked;
-	const asset = document.getElementById('composeLogoAsset').value;
-	if (!on) { el.style.display = 'none'; return; }
-	el.style.display = 'flex';
-	const { w, h } = composerStageSize();
-	const scale = parseFloat(document.getElementById('composeLogoScale').value) || 12;
-	const opacity = (parseInt(document.getElementById('composeLogoOpacity').value, 10) || 90) / 100;
-	const margin = Math.max(2, Math.round((parseInt(document.getElementById('composeLogoMargin').value, 10) || 20) * w / 1080));
-	let lw = Math.max(28, Math.round(w * scale / 100));
-	lw = Math.min(lw, Math.round(w * 0.6), Math.round(h * 0.5));
-	const ar = (img.naturalWidth > 0 && img.naturalHeight > 0) ? img.naturalHeight / img.naturalWidth : 1;
-	const lh = Math.round(lw * ar);
-	const logoTag = el.querySelector('.composer-tag');
-	if (!asset) {
-		el.classList.add('no-asset');
-		img.style.display = 'none';
-		if (logoTag) logoTag.style.display = 'none';
-		el.style.width = Math.max(lw, 96) + 'px';
-		el.style.height = '48px';
-		el.style.fontSize = '12px';
-	} else {
-		el.classList.remove('no-asset');
-		if (logoTag) logoTag.style.display = '';
-		img.style.display = 'block';
-		el.style.width = lw + 'px';
-		el.style.height = 'auto';
-		img.style.opacity = opacity;
-		if (img.getAttribute('src') !== editorLogoUrl()) img.src = editorLogoUrl();
-	}
-	const pos = document.getElementById('composeLogoPos').value;
-	const lx = parseFloat(document.getElementById('composeLogoX').value) || 90;
-	const ly = parseFloat(document.getElementById('composeLogoY').value) || 10;
-	const boxW = el.offsetWidth || lw;
-	const boxH = el.offsetHeight || lh;
-	let left, top;
-	if (pos === 'top-left') { left = margin; top = margin; }
-	else if (pos === 'top-right') { left = w - boxW - margin; top = margin; }
-	else if (pos === 'bottom-left') { left = margin; top = h - boxH - margin; }
-	else if (pos === 'bottom-right') { left = w - boxW - margin; top = h - boxH - margin; }
-	else if (pos === 'center') { left = (w - boxW) / 2; top = (h - boxH) / 2; }
-	else { left = w * lx / 100; top = h * ly / 100; }
-	el.style.left = editorClampPercent(left, 0, Math.max(0, w - boxW)) + 'px';
-	el.style.top = editorClampPercent(top, 0, Math.max(0, h - boxH)) + 'px';
-}
-
-function editorPlaceCrop() {
-	const el = document.getElementById('composerCropFrame');
-	const aspect = document.getElementById('composeAspect').value;
-	const fit = document.getElementById('composeFit').value;
-	const v = document.getElementById('composerVideo');
-	if (aspect === 'original' || fit === 'stretch' || !(v.videoWidth > 0)) {
-		el.style.display = 'none';
-		return;
-	}
-	const { w, h } = composerStageSize();
-	const ar = v.videoWidth / v.videoHeight;
-	let cw, ch, x, y;
-	if (fit === 'cover') {
-		cw = h * ar; ch = h;
-		if (cw < w) { cw = w; ch = w / ar; }
-	} else {
-		cw = w; ch = w / ar;
-		if (ch > h) { ch = h; cw = h * ar; }
-	}
-	x = (w - cw) / 2; y = (h - ch) / 2;
-	el.style.display = 'block';
-	el.style.left = x + 'px';
-	el.style.top = y + 'px';
-	el.style.width = cw + 'px';
-	el.style.height = ch + 'px';
-}
-
-function editorSyncSegButtons() {
-	const aspect = document.getElementById('composeAspect').value;
-	document.querySelectorAll('#eoAspectSeg button').forEach(b => b.classList.toggle('eo-on', b.dataset.aspect === aspect));
-	const fit = document.getElementById('composeFit').value;
-	document.querySelectorAll('#eoFitSeg button').forEach(b => b.classList.toggle('eo-on', b.dataset.fit === fit));
-	const pos = document.getElementById('composeSubPos').value;
-	document.querySelectorAll('#eoSubPosSeg button').forEach(b => b.classList.toggle('eo-on', b.dataset.subpos === pos));
-	const mode = document.getElementById('composeMaskMode').value;
-	document.querySelectorAll('#eoMaskModeSeg button').forEach(b => b.classList.toggle('eo-on', b.dataset.maskmode === mode));
-}
-
-function editorSyncCheckboxes() {
-	document.getElementById('eoSubsToggle').checked = document.getElementById('composeSubsEnabled').checked;
-	document.getElementById('eoMaskToggle').checked = document.getElementById('composeMaskEnabled').checked;
-	document.getElementById('eoLogoToggle').checked = document.getElementById('composeLogoEnabled').checked;
-}
-
-function editorSyncRows() {
-	document.getElementById('eoSubPosRow').style.display = document.getElementById('composeSubsEnabled').checked ? 'flex' : 'none';
-	document.getElementById('eoMaskModeRow').style.display = document.getElementById('composeMaskEnabled').checked ? 'flex' : 'none';
-	document.getElementById('eoLogoSizeRow').style.display = document.getElementById('composeLogoEnabled').checked ? 'flex' : 'none';
-	if (document.getElementById('eoLogoScale').value !== document.getElementById('composeLogoScale').value) {
-		document.getElementById('eoLogoScale').value = document.getElementById('composeLogoScale').value;
-	}
-	document.getElementById('eoLogoScaleVal').textContent = document.getElementById('composeLogoScale').value;
-	document.getElementById('eoLogoOpacity').value = document.getElementById('composeLogoOpacity').value;
-	document.getElementById('eoLogoOpacityVal').textContent = document.getElementById('composeLogoOpacity').value;
-}
-
-function renderVisualEditor() {
-	const stage = document.getElementById('composerStage');
-	const video = document.getElementById('composerVideo');
-	const aspect = document.getElementById('composeAspect').value;
-	const fit = document.getElementById('composeFit').value;
-	let ar;
-	if (aspect === 'custom') {
-		const cw = parseInt(document.getElementById('composeWidth').value, 10) || 1080;
-		const ch = parseInt(document.getElementById('composeHeight').value, 10) || 1920;
-		ar = cw / ch;
-	} else if (aspect === 'original') {
-		ar = (video.videoWidth > 0 && video.videoHeight > 0) ? video.videoWidth / video.videoHeight : 16 / 9;
-	} else {
-		ar = { '9:16': 9 / 16, '16:9': 16 / 9, '1:1': 1, '4:5': 4 / 5 }[aspect] || 16 / 9;
-	}
-	stage.style.setProperty('--cs-ar', String(ar));
-	stage.style.setProperty('--cs-fit', { contain: 'contain', cover: 'cover', blurred_background: 'contain', stretch: 'fill' }[fit] || 'contain');
-	const blurred = fit === 'blurred_background';
-	document.getElementById('composerBlurVideo').style.display = blurred ? 'block' : 'none';
-	editorPlaceMask();
-	editorPlaceSubtitle();
-	editorPlaceLogo();
-	editorPlaceCrop();
-	editorSyncSegButtons();
-	editorSyncCheckboxes();
-	editorSyncRows();
-	editorTrimBar();
-}
-
-// ── editor → form (drag) ──
-
-function editorSetMask(x, y, w, h) {
-	x = editorClampPercent(x, 0, 100);
-	y = editorClampPercent(y, 0, 100);
-	w = editorClampPercent(w, 1, 100);
-	h = editorClampPercent(h, 1, 100);
-	if (x + w > 100) w = Math.max(1, 100 - x);
-	if (y + h > 100) h = Math.max(1, 100 - y);
-	const pairs = [['composeMaskX', Math.round(x)], ['composeMaskY', Math.round(y)], ['composeMaskW', Math.round(w)], ['composeMaskH', Math.round(h)]];
-	for (const [id, val] of pairs) {
-		document.getElementById(id).value = val;
-		document.getElementById(id + 'Val').textContent = val + '%';
-	}
-	editorPlaceMask();
-}
-
-function editorSubDrag(yPct) {
-	const y = editorClampPercent(yPct, 5, 95);
-	const posSel = document.getElementById('composeSubPos');
-	if (posSel.value !== 'custom') posSel.value = 'custom';
-	document.getElementById('composeSubY').value = Math.round(y);
-	document.getElementById('composeSubYVal').textContent = Math.round(y) + '%';
-	document.getElementById('composerSubtitleOverlay').style.top = y + '%';
-	videoComposeToggle();
-	editorSyncSegButtons();
-}
-
-function editorLogoDrag(xPct, yPct) {
-	const { w: sw, h: sh } = composerStageSize();
-	const el = document.getElementById('composerLogoOverlay');
-	const maxL = Math.max(0, (sw - el.offsetWidth) / sw * 100);
-	const maxT = Math.max(0, (sh - el.offsetHeight) / sh * 100);
-	const x = editorClampPercent(xPct, 0, maxL);
-	const y = editorClampPercent(yPct, 0, maxT);
-	el.style.left = x + '%';
-	el.style.top = y + '%';
-	document.getElementById('composeLogoPos').value = 'custom';
-	document.getElementById('composeLogoX').value = Math.round(x);
-	document.getElementById('composeLogoY').value = Math.round(y);
-	videoComposeToggle();
-	editorSyncSegButtons();
-}
-
-function editorLogoResize(x, y, w, h) {
-	const scale = editorClampPercent(w, 2, 60);
-	document.getElementById('composeLogoScale').value = Math.round(scale);
-	document.getElementById('composeLogoScaleVal').textContent = Math.round(scale) + '%';
-	document.getElementById('eoLogoScale').value = Math.round(scale);
-	editorPlaceLogo();
-}
-
-// ── trim ──
-
-function composerVideoDuration() {
-	const v = document.getElementById('composerVideo');
-	return (v.duration && isFinite(v.duration)) ? v.duration : 0;
-}
-
-function editorTrimBar() {
-	const dur = composerVideoDuration();
-	const enabled = document.getElementById('editTrimEnabled').checked;
-	const fill = document.getElementById('editorTFill');
-	const play = document.getElementById('editorTPlay');
-	document.getElementById('editorTrimDur').textContent = dur > 0 ? `⏱ ${dur.toFixed(1)} s` : '';
-	const trimEnabled = document.getElementById('editTrimEnabled');
-	if (dur <= 0) {
-		trimEnabled.disabled = true;
-		trimEnabled.title = 'Cần tải xong video để biết thời lượng';
-		fill.style.width = '0%';
-		play.style.left = '0%';
-		return;
-	}
-	trimEnabled.disabled = false;
-	trimEnabled.title = '';
-	let s = parseFloat(document.getElementById('editTrimStart').value) || 0;
-	let e = parseFloat(document.getElementById('editTrimEnd').value) || 0;
-	if (enabled) {
-		s = Math.min(s, dur);
-		e = Math.min(Math.max(e, s + 0.1), dur);
-		fill.style.display = 'block';
-	} else {
-		fill.style.display = 'none';
-	}
-	fill.style.left = (s / dur * 100) + '%';
-	fill.style.width = Math.max(0, (e - s) / dur * 100) + '%';
-	play.style.left = (editorClampPercent((document.getElementById('composerVideo').currentTime || 0) / dur * 100, 0, 100)) + '%';
-}
-
-function editorTrimSanity() {
-	const dur = composerVideoDuration();
-	const s = parseFloat(document.getElementById('editTrimStart').value) || 0;
-	const e = parseFloat(document.getElementById('editTrimEnd').value) || 0;
-	const note = document.getElementById('editorPreviewNote');
-	if (document.getElementById('editTrimEnabled').checked) {
-		if (e <= s && !(s === 0 && e === 0)) {
-			note.style.color = 'var(--error)';
-			note.textContent = 'End phải lớn hơn Start';
-		} else if (dur && e > dur) {
-			note.style.color = 'var(--warning)';
-			note.textContent = `End vượt thời lượng (${dur.toFixed(1)}s) — backend sẽ cắt theo video`;
-		} else {
-			note.textContent = '';
-		}
-	} else {
-		note.textContent = '';
-	}
-	editorTrimBar();
-}
-
-function editorTrimSet(which) {
-	const v = document.getElementById('composerVideo');
-	const dur = composerVideoDuration();
-	if (!dur) {
-		const note = document.getElementById('editorPreviewNote');
-		note.style.color = 'var(--warning)';
-		note.textContent = 'Chưa có thời lượng video — hãy nhập tay vào ô Start/End';
-		return;
-	}
-	const t = Math.round(v.currentTime * 10) / 10;
-	document.getElementById(which === 'start' ? 'editTrimStart' : 'editTrimEnd').value = String(t);
-	document.getElementById('editTrimEnabled').checked = true;
-	editorTrimSanity();
-}
-
-function editorTrimReset() {
-	document.getElementById('editTrimStart').value = '';
-	document.getElementById('editTrimEnd').value = '';
-	document.getElementById('editTrimEnabled').checked = false;
-	editorTrimSanity();
-}
-
-// ── preview frame ──
-
-function composerShowLivePreview() {
-	document.getElementById('composerFrameImg').style.display = 'none';
-	document.getElementById('composerBackLiveBtn').style.display = 'none';
-}
-
-async function editorRenderFrame() {
-	const id = VIDEO_EDITOR_ID;
-	const note = document.getElementById('editorPreviewNote');
-	note.textContent = '';
-	if (!id) { note.textContent = 'Chưa chọn video.'; return; }
-	const body = videoComposeBody();
-	body.timestamp = parseFloat(document.getElementById('editPreviewTs').value) || 3;
-	note.style.color = 'var(--text-muted)';
-	note.textContent = 'Đang render…';
-	try {
-		const res = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/compose-preview`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(body),
-		});
-		const data = await res.json().catch(() => ({}));
-		if (!res.ok) {
-			note.style.color = 'var(--error)';
-			note.textContent = data.detail || `Lỗi ${res.status}`;
-			return;
-		}
-		const img = document.getElementById('composerFrameImg');
-		img.src = API_BASE + data.url;
-		img.style.display = 'block';
-		document.getElementById('composerBackLiveBtn').style.display = 'block';
-		note.style.color = 'var(--text-muted)';
-		note.textContent = data.message || `Preview ${data.width}x${data.height}`;
-	} catch (e) {
-		note.style.color = 'var(--error)';
-		note.textContent = 'Không kết nối được server: ' + e.message;
-	}
-}
-
-// ── init / bind ──
-
-function videoEditorInit(id) {
-	VIDEO_EDITOR_ID = id;
-	if (!EDITOR_READY) {
-		EDITOR_READY = true;
-		const mask = document.getElementById('composerMaskOverlay');
-		const subtitle = document.getElementById('composerSubtitleOverlay');
-		const logo = document.getElementById('composerLogoOverlay');
-		editorBindDrag(mask, (x, y) => editorSetMask(x, y, parseFloat(document.getElementById('composeMaskW').value) || 90, parseFloat(document.getElementById('composeMaskH').value) || 14));
-		editorBindResize(mask, (x, y, w, h) => editorSetMask(x, y, w, h));
-		editorBindDrag(subtitle, (x, y) => editorSubDrag(y));
-		editorBindDrag(logo, (x, y) => editorLogoDrag(x, y));
-		editorBindResize(logo, (x, y, w, h) => editorLogoResize(x, y, w, h));
-
-		document.querySelectorAll('#eoAspectSeg button').forEach(b => b.addEventListener('click', () => {
-			document.getElementById('composeAspect').value = b.dataset.aspect;
-			videoComposeToggle();
-			renderVisualEditor();
-		}));
-		document.querySelectorAll('#eoFitSeg button').forEach(b => b.addEventListener('click', () => {
-			document.getElementById('composeFit').value = b.dataset.fit;
-			renderVisualEditor();
-		}));
-		const eoToggle = (chkId, formId) => {
-			document.getElementById(chkId).addEventListener('change', e => {
-				document.getElementById(formId).checked = e.target.checked;
-				videoComposeToggle();
-				renderVisualEditor();
-			});
-		};
-		eoToggle('eoSubsToggle', 'composeSubsEnabled');
-		eoToggle('eoMaskToggle', 'composeMaskEnabled');
-		eoToggle('eoLogoToggle', 'composeLogoEnabled');
-		document.querySelectorAll('#eoSubPosSeg button').forEach(b => b.addEventListener('click', () => {
-			document.getElementById('composeSubPos').value = b.dataset.subpos;
-			videoComposeToggle();
-			renderVisualEditor();
-		}));
-		document.querySelectorAll('#eoMaskModeSeg button').forEach(b => b.addEventListener('click', () => {
-			document.getElementById('composeMaskMode').value = b.dataset.maskmode;
-			videoComposeToggle();
-			renderVisualEditor();
-		}));
-		document.getElementById('eoLogoScale').addEventListener('input', (e) => {
-			document.getElementById('composeLogoScale').value = e.target.value;
-			document.getElementById('composeLogoScaleVal').textContent = e.target.value + '%';
-			document.getElementById('eoLogoScaleVal').textContent = e.target.value;
-			editorPlaceLogo();
-		});
-		document.getElementById('eoLogoOpacity').addEventListener('input', (e) => {
-			document.getElementById('composeLogoOpacity').value = e.target.value;
-			document.getElementById('composeLogoOpacityVal').textContent = e.target.value + '%';
-			document.getElementById('eoLogoOpacityVal').textContent = e.target.value;
-			editorPlaceLogo();
-		});
-
-		const formRenderIds = ['composeAspect', 'composeFit', 'composeWidth', 'composeHeight', 'composeSubsEnabled', 'composeSubPos', 'composeSubY', 'composeSubBox', 'composeSubBoxAlpha', 'composeFontSize', 'composeSubColor', 'composeSubOutline', 'composeMaskEnabled', 'composeMaskX', 'composeMaskY', 'composeMaskW', 'composeMaskH', 'composeMaskMode', 'composeLogoEnabled', 'composeLogoAsset', 'composeLogoPos', 'composeLogoScale', 'composeLogoOpacity', 'composeLogoMargin', 'composeLogoX', 'composeLogoY', 'composeSource', 'composeDubSelect'];
-		for (const fid of formRenderIds) {
-			const el = document.getElementById(fid);
-			if (!el) continue;
-			const isSelect = fid === 'composeAspect' || fid === 'composeSubPos' || fid === 'composeLogoPos' || fid === 'composeMaskMode' || fid === 'composeLogoAsset';
-			const onEvent = () => {
-				if (fid === 'composeSource' || fid === 'composeDubSelect') composerStageSyncSource();
-				renderVisualEditor();
-			};
-			el.addEventListener(isSelect ? 'change' : 'input', onEvent);
-		}
-
-		document.getElementById('editTrimStart').addEventListener('input', editorTrimSanity);
-		document.getElementById('editTrimEnd').addEventListener('input', editorTrimSanity);
-		document.getElementById('editTrimEnabled').addEventListener('change', editorTrimSanity);
-		document.getElementById('editTrimStartBtn').addEventListener('click', () => editorTrimSet('start'));
-		document.getElementById('editTrimEndBtn').addEventListener('click', () => editorTrimSet('end'));
-		document.getElementById('editTrimResetBtn').addEventListener('click', editorTrimReset);
-		document.getElementById('editorPreviewBtn').addEventListener('click', editorRenderFrame);
-		document.getElementById('editorExportBtn').addEventListener('click', () => { if (VIDEO_EDITOR_ID) videoComposeStart(VIDEO_EDITOR_ID); });
-		document.getElementById('composerBackLiveBtn').addEventListener('click', composerShowLivePreview);
-
-		const v = document.getElementById('composerVideo');
-		const blur = document.getElementById('composerBlurVideo');
-		const hint = document.getElementById('composerStageHint');
-		v.addEventListener('loadedmetadata', () => { renderVisualEditor(); });
-		v.addEventListener('loadeddata', () => { hint.style.display = 'none'; });
-		v.addEventListener('waiting', () => { hint.style.display = 'flex'; });
-		v.addEventListener('playing', () => { hint.style.display = 'none'; });
-		v.addEventListener('timeupdate', () => {
-			if (blur && blur.style.display !== 'none' && blur.src && !v.paused && blur.paused) {
-				blur.currentTime = v.currentTime;
-				blur.play().catch(() => {});
-			}
-			editorTrimBar();
-			editorSyncSubtitleOverlay();
-		});
-		v.addEventListener('play', () => { if (blur && blur.src) blur.play().catch(() => {}); editorSyncSubtitleOverlay(); });
-		v.addEventListener('pause', () => { if (blur) blur.pause(); editorSyncSubtitleOverlay(); });
-		v.addEventListener('seeked', () => { if (blur && blur.src) blur.currentTime = v.currentTime; editorSyncSubtitleOverlay(); });
-	}
-	document.getElementById('editTrimStart').value = '';
-	document.getElementById('editTrimEnd').value = '';
-	document.getElementById('editTrimEnabled').checked = false;
-	composerShowLivePreview();
-	composerStageSyncSource();
-	renderVisualEditor();
-}
-
-async function videoComposeStart(id) {
-	videoClearError();
-	if (COMPOSE_POLL) clearTimeout(COMPOSE_POLL);
-	const statusEl = document.getElementById('videoComposeStatus');
-	statusEl.style.color = 'var(--warning)';
-	statusEl.textContent = 'Đang khởi tạo job compose…';
-	try {
-		const body = videoComposeBody();
-		console.debug('[compose] body →', { source: body.source, dub_id: body.dub_id });
-		const res = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/compose`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(body),
-		});
-		const data = await res.json().catch(() => ({}));
-		if (!res.ok) {
-			statusEl.style.color = 'var(--error)';
-			statusEl.textContent = data.detail || `Lỗi ${res.status}`;
-			videoShowError(data.detail || `Lỗi ${res.status}`);
-			return;
-		}
-		statusEl.textContent = data.error || '';
-		videoComposePoll(data.job_id, id);
-	} catch (e) {
-		statusEl.style.color = 'var(--error)';
-		statusEl.textContent = 'Không kết nối được server.';
-		videoShowError('Không kết nối được server: ' + e.message);
-	}
-}
-
-function videoComposePoll(jobId, videoId) {
-	if (COMPOSE_POLL) clearTimeout(COMPOSE_POLL);
-	const statusEl = document.getElementById('videoComposeStatus');
-	const jobEl = document.getElementById('videoComposeJobStatus');
-	const tick = async () => {
-		try {
-			const res = await fetch(`${API_BASE}/api/videos/compose/${jobId}`);
-			if (!res.ok) return;
-			const job = await res.json();
-			if (job.status === 'running' || job.status === 'queued') {
-				jobEl.style.display = 'block';
-				jobEl.style.color = 'var(--warning)';
-				jobEl.textContent = `${job.progress || 0}% — ${job.message || 'Đang compose…'}`;
-				statusEl.textContent = '';
-				COMPOSE_POLL = setTimeout(tick, 1500);
-				return;
-			}
-			jobEl.style.display = 'none';
-			if (job.status === 'done') {
-				statusEl.style.color = 'var(--success)';
-				statusEl.textContent = job.message || 'Đã xuất video hoàn chỉnh.';
-				if (VIDEO_CURRENT_ID === videoId) {
-					videoRenderComposeExports(await fetch(`${API_BASE}/api/videos/${encodeURIComponent(videoId)}/exports`).then(r => r.json()).catch(() => []));
-				}
-				return;
-			}
-			if (job.status === 'failed') {
-				statusEl.style.color = 'var(--error)';
-				statusEl.textContent = job.error || job.message || 'Compose thất bại.';
-				videoShowError(job.error || job.message || 'Compose thất bại.');
-				return;
-			}
-			COMPOSE_POLL = setTimeout(tick, 1500);
-		} catch (e) {
-			COMPOSE_POLL = setTimeout(tick, 1500);
-		}
-	};
-	tick();
-}
-
-function videoRenderComposeExports(items) {
-	const container = document.getElementById('videoComposeExports');
-	const countEl = document.getElementById('videoComposeExportsCount');
-	countEl.textContent = items.length ? `${items.length} export` : '';
-	if (!items.length) {
-		container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">Chưa có export nào — cấu hình ở trên và bấm Create Final Video.</div>';
-		return;
-	}
-	container.innerHTML = items.map(m => {
-		const flags = [
-			m.fit_mode || '',
-			m.subtitle_enabled ? 'subs' : '',
-			m.old_subtitle_mask_enabled ? 'mask' : '',
-			m.logo_enabled ? 'logo' : '',
-		].filter(Boolean).join('+') || 'none';
-		return '<div style="border:1px solid var(--card-border);border-radius:var(--radius-sm);padding:8px 10px;background:var(--card-bg);">'
-			+ '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">'
-			+ `<div style="font-size:12px;font-weight:600;color:var(--text-secondary);">${videoEsc(m.export_id)}</div>`
-			+ '<div style="font-size:11px;color:var(--text-muted);">' + videoFmtTime(m.created_at)
-			+ ' · ' + videoEsc(m.resolution || '') + ' · ' + videoEsc(flags)
-			+ ' · ' + (m.source === 'original' ? 'original' : videoEsc(m.source_dub_id || 'dub'))
-			+ ' · ' + videoFmtSize(m.size_bytes) + '</div></div>'
-			+ '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">'
-			+ `<button class="btn-sm" onclick="videoExportAction('${videoEsc(m.video_id)}','${videoEsc(m.export_id)}','preview')">Xem thử</button>`
-			+ `<button class="btn-sm" onclick="videoExportAction('${videoEsc(m.video_id)}','${videoEsc(m.export_id)}','open')">Mở thư mục</button>`
-			+ `<a class="btn-sm" href="${API_BASE}/api/videos/${encodeURIComponent(m.video_id)}/exports/${encodeURIComponent(m.export_id)}/media" download style="text-decoration:none;">Tải MP4</a>`
-			+ `<button class="btn-sm" onclick="videoExportAction('${videoEsc(m.video_id)}','${videoEsc(m.export_id)}','delete')" style="color:var(--error);">Xóa</button>`
-			+ '</div></div>';
-	}).join('');
-}
-
-async function videoExportAction(id, exportId, action) {
-	videoClearError();
-	if (action === 'preview') {
-		const preview = document.getElementById('videoPreview');
-		preview.src = `${API_BASE}/api/videos/${encodeURIComponent(id)}/exports/${encodeURIComponent(exportId)}/media`;
-		preview.load();
-		preview.play().catch(() => { });
-		const statusEl = document.getElementById('videoComposeStatus');
-		statusEl.style.color = 'var(--success)';
-		statusEl.textContent = `Đang xem export ${exportId} (output_final.mp4).`;
-		return;
-	}
-	if (action === 'open') {
-		try {
-			const res = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/exports/${encodeURIComponent(exportId)}/open-folder`, { method: 'POST' });
-			const data = await res.json().catch(() => ({}));
-			if (!res.ok) videoShowError(data.detail || `Lỗi ${res.status}`);
-		} catch (e) {
-			videoShowError('Không kết nối được server: ' + e.message);
-		}
-		return;
-	}
-	if (action === 'delete') {
-		if (!confirm(`Xóa export "${exportId}"? (video gốc và dub output vẫn giữ nguyên)`)) return;
-		try {
-			const res = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/exports/${encodeURIComponent(exportId)}`, { method: 'DELETE' });
-			const data = await res.json().catch(() => ({}));
-			if (!res.ok) { videoShowError(data.detail || `Lỗi ${res.status}`); return; }
-			const list = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/exports`).then(r => r.json()).catch(() => []);
-			videoRenderComposeExports(list);
-		} catch (e) {
-			videoShowError('Không kết nối được server: ' + e.message);
-		}
-	}
-}
-
-async function videoUploadLogo() {
-	videoClearError();
-	const id = COMPOSE_CURRENT_ID || VIDEO_CURRENT_ID;
-	if (!id) return;
-	const input = document.getElementById('composeLogoFile');
-	const file = input.files && input.files[0];
-	if (!file) { videoShowError('Chọn file logo trước (png/jpg/jpeg/webp).'); return; }
-	if (file.size > 8 * 1024 * 1024) { videoShowError('Logo quá lớn (>8MB).'); return; }
-	try {
-		const fd = new FormData();
-		fd.append('file', file);
-		const res = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/assets/logo`, { method: 'POST', body: fd });
-		const data = await res.json().catch(() => ({}));
-		if (!res.ok) { videoShowError(data.detail || `Lỗi ${res.status}`); return; }
-		document.getElementById('composeLogoEnabled').checked = true;
-		const assets = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/assets`).then(r => r.json()).catch(() => []);
-		const assetSel = document.getElementById('composeLogoAsset');
-		assetSel.innerHTML = '';
-		for (const a of assets) {
-			const opt = document.createElement('option');
-			opt.value = a.name;
-			opt.textContent = a.name;
-			opt.selected = a.name === data.name;
-			assetSel.appendChild(opt);
-		}
-		videoComposeToggle();
-		const statusEl = document.getElementById('videoComposeStatus');
-		statusEl.style.color = 'var(--success)';
-		statusEl.textContent = `Đã upload logo "${data.name}".`;
 	} catch (e) {
 		videoShowError('Không kết nối được server: ' + e.message);
 	}
@@ -4117,6 +3260,7 @@ async function videoDelete(id) {
 		if (!res.ok) { videoShowError(`Lỗi ${res.status}`); return; }
 		if (VIDEO_CURRENT_ID === id) {
 			VIDEO_CURRENT_ID = null;
+			workspaceClear();
 			document.getElementById('videoDetailCard').classList.add('hidden');
 			document.getElementById('videoPreview').pause();
 			document.getElementById('videoPreview').removeAttribute('src');
@@ -4125,6 +3269,926 @@ async function videoDelete(id) {
 	} catch (e) {
 		videoShowError('Không kết nối được server: ' + e.message);
 	}
+}
+
+/* ===== MVP-8.4: Compose / Visual editor ===== */
+
+function videoComposeInit(id) {
+	COMPOSE_STATE_INIT = true;
+	videoComposeReset();
+	videoComposeRender();
+	videoComposeSyncOverlay();
+	videoComposeResetOverlay();
+}
+
+function videoComposeReset() {
+	COMPOSE_MASKS = [];
+	COMPOSE_MASK_SELECTED = null;
+	COMPOSE_SUBS_ENABLED = false;
+	document.getElementById('composeMaskEnabled').checked = false;
+	document.getElementById('composeSubsEnabled').checked = false;
+	document.getElementById('composeSubsFontSize').value = 48;
+	document.getElementById('composeSubsFontSizeVal').textContent = '48';
+	document.getElementById('composeSubsColor').value = '#FFFFFF';
+	document.getElementById('composeSubsOutlineColor').value = '#000000';
+	document.getElementById('composeSubsOutlineWidth').value = 2;
+	document.getElementById('composeSubsBox').checked = false;
+	document.getElementById('composeSubsBoxOpacity').value = 75;
+	document.getElementById('composeSubsMarginBottom').value = 60;
+	document.getElementById('composeSubsPosition').value = 'bottom';
+	document.getElementById('videoComposeBtn').disabled = !VIDEO_CURRENT_ID;
+	document.getElementById('videoComposePreviewBtn').disabled = !VIDEO_CURRENT_ID;
+}
+
+function videoComposeNeedVi() {
+	const v = VIDEO_CURRENT_ID;
+	// enable export if either che or subs is on and video loaded
+	return !!VIDEO_CURRENT_ID && (document.getElementById('composeMaskEnabled').checked || document.getElementById('composeSubsEnabled').checked);
+}
+
+function videoComposeToggle() {
+	const on = document.getElementById('composeMaskEnabled').checked;
+	document.getElementById('composeMaskAddBtn').style.display = on ? 'inline-block' : 'none';
+	document.getElementById('composeMaskList').style.display = on ? 'flex' : 'none';
+	document.getElementById('composeMaskEditor').style.display = 'none';
+	if (on && COMPOSE_MASKS.length === 0) {
+		COMPOSE_MASKS.push(videoComposeMaskNewId(null, 'Phụ đề cũ dưới màn hình', 5, 78, 90, 14, 'blur', 18, 0.85, true));
+		COMPOSE_MASK_SELECTED = COMPOSE_MASKS[0].id;
+	}
+	videoComposeRender();
+	videoComposeRefreshButtons();
+}
+
+function videoComposeSubsToggle() {
+	COMPOSE_SUBS_ENABLED = document.getElementById('composeSubsEnabled').checked;
+	const layer = document.getElementById('composerSubtitleOverlay');
+	layer.style.display = COMPOSE_SUBS_ENABLED ? 'block' : 'none';
+	videoComposeRenderSubtitle();
+	videoComposeRefreshButtons();
+}
+
+function videoComposeRefreshButtons() {
+	const anyOn = document.getElementById('composeMaskEnabled').checked || document.getElementById('composeSubsEnabled').checked;
+	document.getElementById('videoComposeBtn').disabled = !VIDEO_CURRENT_ID || !anyOn;
+	document.getElementById('videoComposePreviewBtn').disabled = !VIDEO_CURRENT_ID || !anyOn;
+}
+
+function videoComposeMaskNewId(base, label, x, y, w, h, mode, blur, boxOpacity, enabled) {
+	const id = (base || 'mask_1');
+	return { id, label, x, y, w, h, mode, blur, boxOpacity, enabled };
+}
+
+function videoComposeAddMask() {
+	let n = 2;
+	const taken = COMPOSE_MASKS.map(m => m.id);
+	while (taken.includes('mask_' + n)) n++;
+	COMPOSE_MASKS.push(videoComposeMaskNewId('mask_' + n, 'Vùng che ' + n, 30, 30, 30, 12, 'box', 0, 0.6, true));
+	COMPOSE_MASK_SELECTED = COMPOSE_MASKS[COMPOSE_MASKS.length - 1].id;
+	videoComposeRender();
+	videoComposeMaskSyncForm();
+	videoComposeSyncOverlay();
+}
+
+function videoComposeSelectMask(id) {
+	COMPOSE_MASK_SELECTED = id;
+	videoComposeRender();
+	videoComposeMaskSyncForm();
+	videoComposeSyncOverlay();
+}
+
+function videoComposeDupMask(id) {
+	const m = COMPOSE_MASKS.find(x => x.id === id);
+	if (!m) return;
+	const dup = JSON.parse(JSON.stringify(m));
+	dup.id = videoComposeMaskNewId(null, '', 0, 0, 0, 0, '', 0, 0, true).id;
+	let n = 1;
+	while (COMPOSE_MASKS.some(x => x.id === 'mask_' + n)) n++;
+	dup.id = 'mask_' + n;
+	dup.x = Math.min(100 - dup.w, dup.x + 8);
+	dup.y = Math.min(100 - dup.h, dup.y + 8);
+	dup.label = 'Vùng che ' + n;
+	COMPOSE_MASKS.push(dup);
+	COMPOSE_MASK_SELECTED = dup.id;
+	videoComposeRender();
+	videoComposeMaskSyncForm();
+	videoComposeSyncOverlay();
+}
+
+function videoComposeDeleteMask(id) {
+	COMPOSE_MASKS = COMPOSE_MASKS.filter(x => x.id !== id);
+	if (COMPOSE_MASK_SELECTED === id) COMPOSE_MASK_SELECTED = COMPOSE_MASKS.length ? COMPOSE_MASKS[0].id : null;
+	videoComposeRender();
+	if (COMPOSE_MASK_SELECTED) videoComposeMaskSyncForm();
+	else document.getElementById('composeMaskEditor').style.display = 'none';
+	videoComposeSyncOverlay();
+}
+
+function videoComposeMaskSyncForm() {
+	const m = COMPOSE_MASKS.find(x => x.id === COMPOSE_MASK_SELECTED);
+	const editor = document.getElementById('composeMaskEditor');
+	if (!m) { editor.style.display = 'none'; return; }
+	editor.style.display = 'block';
+	document.getElementById('composeMaskMode').value = m.mode;
+	document.getElementById('composeMaskX').value = Math.round(m.x);
+	document.getElementById('composeMaskY').value = Math.round(m.y);
+	document.getElementById('composeMaskW').value = Math.round(m.w);
+	document.getElementById('composeMaskH').value = Math.round(m.h);
+	document.getElementById('composeMaskBlur').value = m.blur;
+	document.getElementById('composeMaskBoxOpacity').value = Math.round(m.boxOpacity * 100);
+}
+
+function videoComposeMaskFormChanged() {
+	if (!COMPOSE_MASK_SELECTED) return;
+	const m = COMPOSE_MASKS.find(x => x.id === COMPOSE_MASK_SELECTED);
+	if (!m) return;
+	m.mode = document.getElementById('composeMaskMode').value;
+	m.x = clampNum(document.getElementById('composeMaskX').value, 0, 100);
+	m.y = clampNum(document.getElementById('composeMaskY').value, 0, 100);
+	m.w = clampNum(document.getElementById('composeMaskW').value, 1, 100);
+	m.h = clampNum(document.getElementById('composeMaskH').value, 1, 100);
+	m.blur = clampNum(document.getElementById('composeMaskBlur').value, 0, 50);
+	m.boxOpacity = clampNum(document.getElementById('composeMaskBoxOpacity').value, 0, 100) / 100;
+	m.x = Math.min(m.x, 100 - m.w);
+	m.y = Math.min(m.y, 100 - m.h);
+	videoComposeSyncOverlay();
+}
+
+function clampNum(v, min, max) {
+	const n = parseInt(v, 10);
+	if (isNaN(n)) return min;
+	return Math.max(min, Math.min(max, n));
+}
+
+function videoComposeRender() {
+	const toggleBtn = document.getElementById('composeMaskAddBtn');
+	const on = document.getElementById('composeMaskEnabled').checked;
+	toggleBtn.style.display = on ? 'inline-block' : 'none';
+	const list = document.getElementById('composeMaskList');
+	list.style.display = on ? 'flex' : 'none';
+	list.innerHTML = '';
+	if (!on) {
+		document.getElementById('composeMaskEditor').style.display = 'none';
+		return;
+	}
+	for (const m of COMPOSE_MASKS) {
+		const sel = m.id === COMPOSE_MASK_SELECTED;
+		const modeLabel = m.mode === 'box' ? 'Hộp che' : 'Làm mờ';
+		const row = document.createElement('div');
+		row.className = 'mask-row' + (sel ? ' mask-row-selected' : '');
+		row.innerHTML =
+			'<label style="display:flex;align-items:center;gap:4px;cursor:pointer;" title="Bật/tắt vùng che">' +
+			'<input type="checkbox" ' + (m.enabled ? 'checked' : '') + ' onclick="videoComposeToggleMask(\'' + videoEsc(m.id) + '\')"></label>' +
+			'<span class="mask-name">' + videoEsc(m.label || m.id) + '</span>' +
+			'<span style="font-size:11px;color:var(--text-muted);">' + modeLabel + '</span>' +
+			'<button class="btn-sm" onclick="videoComposeSelectMask(\'' + videoEsc(m.id) + '\')">Chọn</button>' +
+			'<button class="btn-sm" onclick="videoComposeDupMask(\'' + videoEsc(m.id) + '\')">Nhân đôi</button>' +
+			'<button class="btn-sm" style="color:var(--error);" onclick="videoComposeDeleteMask(\'' + videoEsc(m.id) + '\')">Xóa</button>';
+		list.appendChild(row);
+	}
+	videoComposeMaskSyncForm();
+	videoComposeSyncOverlay();
+}
+
+function videoComposeToggleMask(id) {
+	const m = COMPOSE_MASKS.find(x => x.id === id);
+	if (!m) return;
+	m.enabled = !m.enabled;
+	videoComposeSyncOverlay();
+}
+
+/* Overlay helpers */
+function videoPctToPx(v, size) {
+	return (v / 100) * size;
+}
+
+function videoComposeOverlayRect() {
+	const wrap = document.querySelector('.video-preview-wrap');
+	if (!wrap) return null;
+	const video = document.getElementById('videoPreview');
+	const vr = wrap.getBoundingClientRect();
+	if (!video || !video.videoWidth) return { left: 0, top: 0, width: vr.width, height: vr.height, wrap };
+	return { left: 0, top: 0, width: vr.width, height: vr.height, wrap };
+}
+
+function videoComposeSyncOverlay() {
+	const layer = document.getElementById('composerMaskLayer');
+	const rect = videoComposeOverlayRect();
+	syncSubtitleOverlay();
+	if (!rect) return;
+	layer.innerHTML = '';
+	const on = document.getElementById('composeMaskEnabled').checked;
+	if (!on) return;
+	for (const m of COMPOSE_MASKS) {
+		const d = document.createElement('div');
+		d.className = 'composer-mask' + (m.id === COMPOSE_MASK_SELECTED ? ' mask-selected' : '') + (m.enabled ? '' : ' mask-disabled');
+		const left = videoPctToPx(m.x, rect.width);
+		const top = videoPctToPx(m.y, rect.height);
+		const width = videoPctToPx(m.w, rect.width);
+		const height = videoPctToPx(m.h, rect.height);
+		d.style.left = left + 'px';
+		d.style.top = top + 'px';
+		d.style.width = width + 'px';
+		d.style.height = height + 'px';
+		if (m.mode === 'box') {
+			d.style.background = 'rgba(0,0,0,' + m.boxOpacity + ')';
+		} else {
+			d.style.background = 'rgba(0,0,0,0.18)';
+		}
+		d.style.display = m.enabled ? '' : 'none';
+		d.dataset.maskId = m.id;
+		const label = document.createElement('div');
+		label.className = 'mask-label';
+		label.textContent = m.label || m.id;
+		d.appendChild(label);
+		if (m.enabled) {
+			for (const hc of ['h-nw', 'h-ne', 'h-sw', 'h-se']) {
+				const h = document.createElement('div');
+				h.className = 'mask-handle ' + hc;
+				h.dataset.handle = hc;
+				d.appendChild(h);
+			}
+		}
+		d.addEventListener('mousedown', e => onMaskMouseDown(e, m.id));
+		layer.appendChild(d);
+	}
+}
+
+function syncSubtitleOverlay() {
+	const layer = document.getElementById('composerSubtitleOverlay');
+	const rect = videoComposeOverlayRect();
+	if (!rect) { return; }
+	if (!COMPOSE_SUBS_ENABLED) { layer.style.display = 'none'; return; }
+	layer.style.display = 'block';
+	const fs = videoComposeFontSize();
+	layer.style.fontSize = fs + 'px';
+	const pos = document.getElementById('composeSubsPosition').value;
+	if (pos === 'top') layer.style.top = '4%';
+	else if (pos === 'middle') layer.style.top = '45%';
+	else layer.style.top = 'auto';
+	if (pos === 'bottom') layer.style.bottom = videoPctToPx((document.getElementById('composeSubsMarginBottom').value / 100) * 18, rect.height) + 'px';
+	else { layer.style.bottom = 'auto'; }
+	const boxOn = document.getElementById('composeSubsBox').checked;
+	const boxO = document.getElementById('composeSubsBoxOpacity').value / 100;
+	if (boxOn) {
+		layer.style.background = 'rgba(0,0,0,' + boxO + ')';
+		layer.style.padding = '2px 8px';
+		layer.style.borderRadius = '3px';
+	} else {
+		layer.style.background = 'transparent';
+		layer.style.padding = '0';
+	}
+	layer.style.color = document.getElementById('composeSubsColor').value;
+	layer.style.textShadow = videoComposeTextShadow();
+	const outlineW = parseInt(document.getElementById('composeSubsOutlineWidth').value, 10) || 0;
+	const labelVal = document.getElementById('composeSubsFontSizeVal');
+	if (labelVal) labelVal.textContent = fs;
+}
+
+function videoComposeTextShadow() {
+	return '2px 2px 0 #000, -2px 2px 0 #000, 2px -2px 0 #000, -2px -2px 0 #000';
+}
+
+function videoComposeFontSize() {
+	return parseInt(document.getElementById('composeSubsFontSize').value, 10) || 48;
+}
+
+function videoComposeRenderSubtitle() {
+	const layer = document.getElementById('composerSubtitleOverlay');
+	const v = videoCurrentSegmentText();
+	if (!COMPOSE_SUBS_ENABLED) { layer.innerHTML = ''; layer.style.display = 'none'; return; }
+	layer.innerHTML = videoEsc(v) + '<div class="sub-resize" title="Kéo để phóng to/thu nhỏ"></div>';
+	syncSubtitleOverlay();
+}
+
+function videoCurrentSegmentText() {
+	const overlay = document.getElementById('composerSubtitleOverlay');
+	void overlay;
+	const video = document.getElementById('videoPreview');
+	if (!video) return '';
+	if (typeof VIDEO_VI_SEGMENTS === 'undefined' || !VIDEO_VI_SEGMENTS) return 'Xin chào';
+	const t = video.currentTime || 0;
+	const seg = VIDEO_VI_SEGMENTS.find(s => t >= (s.start || 0) && t <= (s.end || (s.start || 0) + 5));
+	if (!seg || !seg.text) return '';
+	return seg.text;
+}
+
+function videoComposeSetSubtitleText(t) {
+	const layer = document.getElementById('composerSubtitleOverlay');
+	if (!COMPOSE_SUBS_ENABLED) return;
+	const v = t !== undefined && t !== null ? t : videoCurrentSegmentText();
+	layer.innerHTML = videoEsc(v) + '<div class="sub-resize" title="Kéo để phóng to/thu nhỏ"></div>';
+}
+
+function videoComposeFontRangeChanged() {
+	const val = parseInt(document.getElementById('composeSubsFontSize').value, 10) || 48;
+	document.getElementById('composeSubsFontSizeVal').textContent = val;
+	videoComposeRenderSubtitle();
+	videoComposeRefreshButtons();
+}
+
+function videoComposeSubsFormChanged() {
+	videoComposeRenderSubtitle();
+}
+
+function composeSetFontPreset(fs) {
+	document.getElementById('composeSubsFontSize').value = fs;
+	document.getElementById('composeSubsFontSizeVal').textContent = fs;
+	videoComposeRenderSubtitle();
+}
+
+/* Drag/resize handlers */
+function onMaskMouseDown(e, maskId) {
+	e.preventDefault();
+	const rect = videoComposeOverlayRect();
+	if (!rect) return;
+	videoComposeSelectMask(maskId);
+	if (e.target && e.target.classList && e.target.classList.contains('mask-handle')) {
+		startMaskResize(e, maskId, e.target.dataset.handle);
+		return;
+	}
+	const m = COMPOSE_MASKS.find(x => x.id === maskId);
+	if (!m) return;
+	const startX = e.clientX, startY = e.clientY;
+	const orig = { x: m.x, y: m.y };
+	const move = ev => {
+		const rect2 = videoComposeOverlayRect();
+		if (!rect2) return;
+		const dx = (ev.clientX - startX) / rect2.width * 100;
+		const dy = (ev.clientY - startY) / rect2.height * 100;
+		m.x = Math.max(0, Math.min(100 - m.w, orig.x + dx));
+		m.y = Math.max(0, Math.min(100 - m.h, orig.y + dy));
+		videoComposeSyncOverlay();
+	};
+	const up = () => {
+		document.removeEventListener('mousemove', move);
+		document.removeEventListener('mouseup', up);
+		videoComposeMaskSyncForm();
+	};
+	document.addEventListener('mousemove', move);
+	document.addEventListener('mouseup', up);
+}
+
+function startMaskResize(e, maskId, handle) {
+	const rect = videoComposeOverlayRect();
+	if (!rect) return;
+	const m = COMPOSE_MASKS.find(x => x.id === maskId);
+	if (!m) return;
+	const startX = e.clientX, startY = e.clientY;
+	const orig = { x: m.x, y: m.y, w: m.w, h: m.h };
+	const resize = ev => {
+		const rect2 = videoComposeOverlayRect();
+		if (!rect2) return;
+		const dx = (ev.clientX - startX) / rect2.width * 100;
+		const dy = (ev.clientY - startY) / rect2.height * 100;
+		let nx = orig.x, ny = orig.y, nw = orig.w, nh = orig.h;
+		if (handle.includes('e')) nw = orig.w + dx;
+		if (handle.includes('s')) nh = orig.h + dy;
+		if (handle.includes('w')) { nw = orig.w - dx; nx = orig.x + dx; }
+		if (handle.includes('n')) { nh = orig.h - dy; ny = orig.y + dy; }
+		if (nw >= 1) { m.w = Math.min(nw, 100 - nx); m.x = Math.max(0, Math.min(nx, 100 - m.w)); }
+		if (nh >= 1) { m.h = Math.min(nh, 100 - ny); m.y = Math.max(0, Math.min(ny, 100 - m.h)); }
+		videoComposeSyncOverlay();
+	};
+	const up = () => {
+		document.removeEventListener('mousemove', resize);
+		document.removeEventListener('mouseup', up);
+		videoComposeMaskSyncForm();
+	};
+	document.addEventListener('mousemove', resize);
+	document.addEventListener('mouseup', up);
+}
+
+function videoComposeSubtitleMouseDown(e) {
+	if (e.target && e.target.classList && e.target.classList.contains('sub-resize')) {
+		videoComposeSubtitleResize(e);
+		return;
+	}
+	e.preventDefault();
+	const rect = videoComposeOverlayRect();
+	if (!rect) return;
+	const startY = e.clientY;
+	const pos = document.getElementById('composeSubsPosition');
+	const margin = document.getElementById('composeSubsMarginBottom');
+	const startMargin = parseInt(margin.value, 10) || 60;
+	const move = ev => {
+		const rect2 = videoComposeOverlayRect();
+		if (!rect2) return;
+		if (pos.value === 'bottom') {
+			const dy = (startY - ev.clientY) / rect2.height * 100;
+			margin.value = Math.max(0, Math.min(200, Math.round(startMargin + dy * 20)));
+		} else {
+			// drag up/down switches position roughly
+			const dy = (ev.clientY - startY) / rect2.height * 100;
+			if (dy < -25) { pos.value = 'top'; }
+			else if (dy > 25) { pos.value = 'bottom'; }
+			else { pos.value = 'middle'; }
+		}
+		videoComposeRenderSubtitle();
+	};
+	const up = () => {
+		document.removeEventListener('mousemove', move);
+		document.removeEventListener('mouseup', up);
+	};
+	document.addEventListener('mousemove', move);
+	document.addEventListener('mouseup', up);
+}
+
+function videoComposeSubtitleResize(e) {
+	e.preventDefault();
+	const startY = e.clientY;
+	const startFs = videoComposeFontSize();
+	const rect = videoComposeOverlayRect();
+	if (!rect) return;
+	const move = ev => {
+		const dy = (ev.clientY - startY) / (rect ? rect.height : 320);
+		let fs = startFs + dy * 300;
+		fs = Math.max(20, Math.min(96, Math.round(fs)));
+		document.getElementById('composeSubsFontSize').value = fs;
+		document.getElementById('composeSubsFontSizeVal').textContent = fs;
+		videoComposeRenderSubtitle();
+	};
+	const up = () => {
+		document.removeEventListener('mousemove', move);
+		document.removeEventListener('mouseup', up);
+		videoComposeRefreshButtons();
+	};
+	document.addEventListener('mousemove', move);
+	document.addEventListener('mouseup', up);
+}
+
+function videoComposeSyncOverlayHandlers() {
+	const layer = document.getElementById('composerSubtitleOverlay');
+	if (layer) {
+		layer.removeEventListener('mousedown', videoComposeSubtitleMouseDown);
+		layer.addEventListener('mousedown', videoComposeSubtitleMouseDown);
+	}
+}
+
+function videoComposeResetOverlay() {
+	document.getElementById('composerMaskLayer').innerHTML = '';
+	document.getElementById('composerSubtitleOverlay').innerHTML = '';
+	document.getElementById('composerSubtitleOverlay').style.display = 'none';
+}
+
+function videoComposeSyncEvents() {
+	videoComposeSyncOverlayHandlers();
+	if (COMPOSE_SUBS_ENABLED) videoComposeRenderSubtitle();
+}
+
+function workspaceTab(name, btn) {
+	document.querySelectorAll('.ws-panel').forEach(p => p.classList.remove('active'));
+	document.querySelectorAll('.ws-tab').forEach(t => t.classList.remove('active'));
+	const panel = document.getElementById('ws-' + name);
+	if (panel) panel.classList.add('active');
+	if (btn) btn.classList.add('active');
+	if (name === 'segments') workspaceHighlightCurrentSegment();
+}
+
+function workspaceSourceMediaURL(id, srcType, refId) {
+	if (srcType === 'dub') {
+		return `${API_BASE}/api/videos/${encodeURIComponent(id)}/dubs/${encodeURIComponent(refId)}/media`;
+	}
+	if (srcType === 'export') {
+		return `${API_BASE}/api/videos/${encodeURIComponent(id)}/exports/${encodeURIComponent(refId)}/media`;
+	}
+	return `${API_BASE}/api/videos/${encodeURIComponent(id)}/media`;
+}
+
+function workspaceRenderSourceSelect() {
+	const sel = document.getElementById('workspaceSourceSelect');
+	if (!sel) return;
+	const prev = sel.value;
+	sel.innerHTML = '';
+	const add = (val, label) => {
+		const o = document.createElement('option');
+		o.value = val;
+		o.textContent = label;
+		sel.appendChild(o);
+	};
+	add('original', 'Video gốc');
+	(WORKSPACE_DUBS || []).forEach(d => add('dub:' + d.dub_id, 'Dub: ' + d.dub_id));
+	(WORKSPACE_EXPORTS || []).forEach(e => add('export:' + e.export_id, 'Export: ' + e.export_id));
+	// default: newest dub when it exists and nothing chosen yet
+	if (!CURRENT_DUB_ID && !CURRENT_EXPORT_ID && CURRENT_WORKING_SOURCE === 'original' && (WORKSPACE_DUBS || []).length) {
+		CURRENT_WORKING_SOURCE = 'dub';
+		CURRENT_DUB_ID = WORKSPACE_DUBS[0].dub_id;
+		VIDEO_DUB_SELECTED = CURRENT_DUB_ID;
+	}
+	if ((CURRENT_WORKING_SOURCE === 'dub' && CURRENT_DUB_ID && sel.value !== 'dub:' + CURRENT_DUB_ID)) {
+		sel.value = 'dub:' + CURRENT_DUB_ID;
+	} else if ((CURRENT_WORKING_SOURCE === 'export' && CURRENT_EXPORT_ID && sel.value !== 'export:' + CURRENT_EXPORT_ID)) {
+		sel.value = 'export:' + CURRENT_EXPORT_ID;
+	} else if (prev && Array.from(sel.options).some(o => o.value === prev)) {
+		sel.value = prev;
+	} else {
+		sel.value = 'original';
+	}
+	if (!sel.value) sel.value = 'original';
+	const key = CURRENT_WORKING_SOURCE + ':' + (CURRENT_DUB_ID || CURRENT_EXPORT_ID || 'original');
+	const preview = document.getElementById('videoPreview');
+	if (preview && VIDEO_CURRENT_ID && CURRENT_WORKING_SOURCE !== 'original' && preview.getAttribute('data-ws-source') !== key) {
+		preview.src = workspaceSourceMediaURL(VIDEO_CURRENT_ID, CURRENT_WORKING_SOURCE, CURRENT_DUB_ID || CURRENT_EXPORT_ID);
+		preview.setAttribute('data-ws-source', key);
+		preview.load();
+		preview.play().catch(() => { });
+	}
+	workspaceSyncSourceUI();
+}
+
+function workspaceSourceChange() {
+	const sel = document.getElementById('workspaceSourceSelect');
+	const val = sel.value || 'original';
+	if (val === 'original') {
+		CURRENT_WORKING_SOURCE = 'original';
+		CURRENT_DUB_ID = null;
+		CURRENT_EXPORT_ID = null;
+	} else if (val.startsWith('dub:')) {
+		CURRENT_WORKING_SOURCE = 'dub';
+		CURRENT_DUB_ID = val.slice(4);
+		CURRENT_EXPORT_ID = null;
+		VIDEO_DUB_SELECTED = CURRENT_DUB_ID;
+	} else if (val.startsWith('export:')) {
+		CURRENT_WORKING_SOURCE = 'export';
+		CURRENT_EXPORT_ID = val.slice(7);
+		CURRENT_DUB_ID = null;
+	}
+	const preview = document.getElementById('videoPreview');
+	if (preview && VIDEO_CURRENT_ID) {
+		preview.src = workspaceSourceMediaURL(VIDEO_CURRENT_ID, CURRENT_WORKING_SOURCE, CURRENT_DUB_ID || CURRENT_EXPORT_ID);
+		preview.setAttribute('data-ws-source', CURRENT_WORKING_SOURCE + ':' + (CURRENT_DUB_ID || CURRENT_EXPORT_ID || 'original'));
+		preview.currentTime = 0;
+		preview.load();
+	}
+	workspaceSyncSourceUI();
+	workspaceUpdateExportSummary();
+	workspaceHighlightCurrentSegment();
+}
+
+function workspaceSyncSourceUI() {
+	const badge = document.getElementById('workspaceSourceBadge');
+	const metaEl = document.getElementById('workspacePreviewMeta');
+	let label = 'Gốc';
+	let cls = '';
+	if (CURRENT_WORKING_SOURCE === 'dub') {
+		label = 'Dub · ' + (CURRENT_DUB_ID || '');
+		cls = 'src-dub';
+	} else if (CURRENT_WORKING_SOURCE === 'export') {
+		label = 'Export · ' + (CURRENT_EXPORT_ID || '');
+		cls = 'src-export';
+	}
+	if (badge) { badge.textContent = label; badge.className = 'ws-source-badge ' + cls; }
+	if (metaEl) {
+		metaEl.textContent = (CURRENT_WORKING_SOURCE === 'dub' || CURRENT_WORKING_SOURCE === 'export')
+			? `Đang xem bản ${CURRENT_WORKING_SOURCE} (${CURRENT_DUB_ID || CURRENT_EXPORT_ID || ''})`
+			: 'Đang xem video gốc (index.mp4)';
+	}
+}
+
+async function workspaceLoadExports(id) {
+	const listEl = document.getElementById('videoExportsList');
+	try {
+		const res = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/exports`);
+		if (!res.ok) throw new Error(`Lỗi ${res.status}`);
+		const items = await res.json();
+		WORKSPACE_EXPORTS = items || [];
+		if (!items || !items.length) {
+			listEl.innerHTML = '<div class="no-chunks">Chưa có bản export nào — mở tab "Chỉnh video" và bấm Xuất.</div>';
+		} else {
+			listEl.innerHTML = items.map(e => {
+				const sel = CURRENT_WORKING_SOURCE === 'export' && CURRENT_EXPORT_ID === e.export_id;
+				return '<div style="border:1px solid ' + (sel ? 'var(--success)' : 'var(--card-border)') + ';border-radius:var(--radius-sm);padding:8px 10px;background:var(--card-bg);">'
+					+ '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">'
+					+ '<div style="font-size:12px;font-weight:600;color:var(--text-secondary);">' + videoEsc(e.export_id) + '</div>'
+					+ '<div style="font-size:11px;color:var(--text-muted);">' + videoFmtTime(e.created_at)
+					+ (e.width ? ` · ${e.width}x${e.height}` : '')
+					+ (e.subtitle_enabled ? ' · có phụ đề' : '')
+					+ (e.enabled_masks ? ` · ${e.enabled_masks} vùng che` : '') + '</div></div>'
+					+ '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">'
+					+ `<button class="btn-sm" onclick="workspaceSelectExport('${videoEsc(id)}','${videoEsc(e.export_id)}')">Xem</button>`
+					+ `<a class="btn-sm" href="${API_BASE}/api/videos/${encodeURIComponent(id)}/exports/${encodeURIComponent(e.export_id)}/media" download style="text-decoration:none;">Download MP4</a>`
+					+ '</div></div>';
+			}).join('');
+		}
+		workspaceRenderSourceSelect();
+	} catch (e) {
+		listEl.innerHTML = '<div class="no-chunks">Không tải được danh sách export: ' + videoEsc(e.message) + '</div>';
+	}
+}
+
+function workspaceSelectExport(id, exportId) {
+	CURRENT_WORKING_SOURCE = 'export';
+	CURRENT_EXPORT_ID = exportId;
+	CURRENT_DUB_ID = null;
+	VIDEO_DUB_SELECTED = null;
+	const preview = document.getElementById('videoPreview');
+	if (preview) {
+		preview.src = `${API_BASE}/api/videos/${encodeURIComponent(id)}/exports/${encodeURIComponent(exportId)}/media`;
+		preview.load();
+		preview.play().catch(() => { });
+	}
+	workspaceSyncSourceUI();
+	workspaceRenderSourceSelect();
+	workspaceLoadExports(id);
+	workspaceUpdateExportSummary();
+	workspaceHighlightCurrentSegment();
+}
+
+function workspaceSegmentFmt(t) {
+	if (t === undefined || t === null || isNaN(t)) return '0';
+	t = Math.max(0, t);
+	return t.toFixed(2);
+}
+
+async function workspaceLoadSegments(id) {
+	const statusEl = document.getElementById('segmentEditorStatus');
+	const listEl = document.getElementById('segmentList');
+	statusEl.textContent = 'Đang tải…';
+	try {
+		const res = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/segments`);
+		if (!res.ok) throw new Error(`Lỗi ${res.status}`);
+		const data = await res.json();
+		WORKSPACE_ORIG_SEGMENTS = data.original_segments || [];
+		WORKSPACE_VI_SEGMENTS = data.vi_segments || [];
+		if (!WORKSPACE_ORIG_SEGMENTS.length && !WORKSPACE_VI_SEGMENTS.length) {
+			listEl.innerHTML = '<div class="no-chunks">Chưa có transcript — bấm Transcribe ở Video Library.</div>';
+			statusEl.textContent = '';
+			return;
+		}
+		workspaceRenderSegments();
+		statusEl.textContent = WORKSPACE_ORIG_SEGMENTS.length + ' đoạn';
+	} catch (e) {
+		listEl.innerHTML = '<div class="no-chunks">Không tải được đoạn: ' + videoEsc(e.message) + '</div>';
+		statusEl.textContent = '';
+	}
+}
+
+function workspaceRenderSegments() {
+	const listEl = document.getElementById('segmentList');
+	const count = Math.max(WORKSPACE_ORIG_SEGMENTS.length, WORKSPACE_VI_SEGMENTS.length);
+	if (!count) { listEl.innerHTML = '<div class="no-chunks">Chưa có đoạn nào.</div>'; return; }
+	listEl.innerHTML = '';
+	for (let i = 0; i < count; i++) {
+		const orig = WORKSPACE_ORIG_SEGMENTS[i] || {};
+		const vi = WORKSPACE_VI_SEGMENTS[i] || {};
+		const start = orig.start !== undefined ? orig.start : (vi.start !== undefined ? vi.start : 0);
+		const end = orig.end !== undefined ? orig.end : (vi.end !== undefined ? vi.end : start + 5);
+		const card = document.createElement('div');
+		card.className = 'segment-card' + (i === WORKSPACE_CURRENT_SEGMENT ? ' segment-current' : '');
+		card.dataset.segIndex = i;
+		card.innerHTML =
+			'<div class="segment-card-head">'
+			+ '<span class="segment-no">#' + (i + 1) + '</span>'
+			+ '<span class="segment-time-inputs">'
+			+ '<input type="number" step="0.01" min="0" class="seg-start" value="' + workspaceSegmentFmt(start) + '" title="Bắt đầu (giây)">'
+			+ '–'
+			+ '<input type="number" step="0.01" min="0" class="seg-end" value="' + workspaceSegmentFmt(end) + '" title="Kết thúc (giây)">'
+			+ 's</span>'
+			+ '<span class="segment-badge">gốc</span>'
+			+ '<span class="segment-badge" style="' + (WORKSPACE_VI_SEGMENTS.length ? '' : 'display:none;') + '">vi</span>'
+			+ '</div>'
+			+ '<div class="segment-textareas">'
+			+ '<textarea class="seg-orig" placeholder="Transcript gốc" data-vi="0">' + videoEsc(orig.text || '') + '</textarea>'
+			+ '<textarea class="seg-vi" placeholder="Bản dịch tiếng Việt" data-vi="1"' + (WORKSPACE_VI_SEGMENTS.length ? '' : ' disabled') + '>' + videoEsc(vi.text || '') + '</textarea>'
+			+ '</div>'
+			+ '<div class="segment-card-actions">'
+			+ '<button class="btn-sm" onclick="workspacePlaySegment(' + i + ')">Phát đoạn</button>'
+			+ '<button class="btn-sm" onclick="workspaceSaveSegment(' + i + ')">Lưu đoạn</button>'
+			+ '<button class="btn-sm" onclick="workspaceSegmentToTTS(' + i + ')">Đưa vào TTS</button>'
+			+ '<span class="seg-save-status" style="font-size:11px;color:var(--success);margin-left:auto;"></span>'
+			+ '</div>';
+		listEl.appendChild(card);
+	}
+}
+
+function workspacePlaySegment(idx) {
+	const video = document.getElementById('videoPreview');
+	if (!video || !VIDEO_CURRENT_ID) return;
+	const orig = WORKSPACE_ORIG_SEGMENTS[idx];
+	const vi = WORKSPACE_VI_SEGMENTS[idx];
+	const start = orig && orig.start !== undefined ? orig.start : (vi ? vi.start : 0);
+	video.currentTime = start || 0;
+	video.play().catch(() => { });
+	workspaceHighlightCurrentSegment(true);
+}
+
+function workspaceHighlightCurrentSegment(force) {
+	if (!VIDEO_CURRENT_ID) return;
+	const video = document.getElementById('videoPreview');
+	let t = video ? video.currentTime : 0;
+	let idx = -1;
+	const base = (WORKSPACE_VI_SEGMENTS && WORKSPACE_VI_SEGMENTS.length) ? WORKSPACE_VI_SEGMENTS : WORKSPACE_ORIG_SEGMENTS;
+	if (base && base.length) {
+		idx = base.findIndex(s => t >= (s.start || 0) && t <= (s.end || (s.start || 0) + 5));
+	}
+	if (force) idx = WORKSPACE_CURRENT_SEGMENT;
+	if (idx === WORKSPACE_CURRENT_SEGMENT && !force) return;
+	WORKSPACE_CURRENT_SEGMENT = idx;
+	document.querySelectorAll('.segment-card').forEach(c => {
+		c.classList.toggle('segment-current', parseInt(c.dataset.segIndex, 10) === idx);
+	});
+	if (idx >= 0) {
+		const card = document.querySelector('.segment-card[data-seg-index="' + idx + '"]');
+		if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+	}
+}
+
+async function workspaceSaveSegment(idx) {
+	const card = document.querySelector('.segment-card[data-seg-index="' + idx + '"]');
+	if (!card || !VIDEO_CURRENT_ID) return;
+	const startInput = card.querySelector('.seg-start');
+	const endInput = card.querySelector('.seg-end');
+	const origTa = card.querySelector('.seg-orig');
+	const viTa = card.querySelector('.seg-vi');
+	const statusEl = card.querySelector('.seg-save-status');
+	const body = {
+		start: parseFloat(startInput.value),
+		end: parseFloat(endInput.value),
+		original_text: origTa.value,
+		vi_text: WORKSPACE_VI_SEGMENTS.length ? viTa.value : null,
+	};
+	try {
+		const res = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(VIDEO_CURRENT_ID)}/segments/${idx}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body),
+		});
+		const data = await res.json().catch(() => ({}));
+		if (!res.ok) { statusEl.textContent = 'Lỗi: ' + (data.detail || res.status); statusEl.style.color = 'var(--error)'; return; }
+		if (WORKSPACE_ORIG_SEGMENTS[idx]) { WORKSPACE_ORIG_SEGMENTS[idx].start = body.start; WORKSPACE_ORIG_SEGMENTS[idx].end = body.end; WORKSPACE_ORIG_SEGMENTS[idx].text = body.original_text; }
+		if (WORKSPACE_VI_SEGMENTS[idx]) { WORKSPACE_VI_SEGMENTS[idx].start = body.start; WORKSPACE_VI_SEGMENTS[idx].end = body.end; WORKSPACE_VI_SEGMENTS[idx].text = body.vi_text; }
+		statusEl.textContent = 'Đã lưu ✓';
+		statusEl.style.color = 'var(--success)';
+		setTimeout(() => { statusEl.textContent = ''; }, 2500);
+		window.VIDEO_VI_SEGMENTS = WORKSPACE_VI_SEGMENTS.length ? WORKSPACE_VI_SEGMENTS : window.VIDEO_VI_SEGMENTS;
+		window.VIDEO_TRANSCRIPT_SEGMENTS = WORKSPACE_ORIG_SEGMENTS.length ? WORKSPACE_ORIG_SEGMENTS : window.VIDEO_TRANSCRIPT_SEGMENTS;
+		if (COMPOSE_SUBS_ENABLED) videoComposeRenderSubtitle();
+	} catch (e) {
+		statusEl.textContent = 'Lỗi kết nối';
+		statusEl.style.color = 'var(--error)';
+	}
+}
+
+function workspaceSegmentToTTS(idx) {
+	const seg = WORKSPACE_VI_SEGMENTS[idx] || WORKSPACE_ORIG_SEGMENTS[idx];
+	if (!seg) return;
+	if (typeof textInput !== 'undefined' && textInput) {
+		textInput.value = seg.text || '';
+		if (typeof updateCharCount === 'function') updateCharCount();
+	}
+	const dz = document.getElementById('dropZone');
+	if (dz) dz.classList.remove('empty');
+}
+
+function workspaceUpdateExportSummary() {
+	const srcEl = document.getElementById('exportSourceLabel');
+	const maskEl = document.getElementById('exportMaskLabel');
+	const subsEl = document.getElementById('exportSubsLabel');
+	if (srcEl) {
+		const label = CURRENT_WORKING_SOURCE === 'dub' ? ('Bản dub: ' + CURRENT_DUB_ID)
+			: CURRENT_WORKING_SOURCE === 'export' ? ('Bản export: ' + CURRENT_EXPORT_ID)
+			: 'Video gốc';
+		srcEl.textContent = label;
+	}
+	const maskOn = document.getElementById('composeMaskEnabled');
+	const subsOn = document.getElementById('composeSubsEnabled');
+	if (maskEl) maskEl.textContent = (maskOn && maskOn.checked) ? 'Bật (' + COMPOSE_MASKS.filter(m => m.enabled).length + ' vùng)' : 'Tắt';
+	if (subsEl) subsEl.textContent = (subsOn && subsOn.checked) ? 'Bật' : 'Tắt';
+}
+
+function workspaceFinalExport() {
+	if (VIDEO_CURRENT_ID) videoComposeExport(VIDEO_CURRENT_ID);
+}
+
+function workspaceOpenFinalFolder() {
+	if (VIDEO_CURRENT_ID) videoOpenFolder(VIDEO_CURRENT_ID);
+}
+
+function workspaceClear() {
+	WORKSPACE_DUBS = [];
+	WORKSPACE_EXPORTS = [];
+	WORKSPACE_ORIG_SEGMENTS = [];
+	WORKSPACE_VI_SEGMENTS = [];
+	WORKSPACE_CURRENT_SEGMENT = -1;
+	CURRENT_WORKING_SOURCE = 'original';
+	CURRENT_DUB_ID = null;
+	CURRENT_EXPORT_ID = null;
+	VIDEO_DUB_SELECTED = null;
+}
+
+function videoEditorInit() {
+	if (window.__videoEditorBound) return;
+	window.__videoEditorBound = true;
+	const video = document.getElementById('videoPreview');
+	if (video) {
+		video.addEventListener('timeupdate', () => {
+			if (COMPOSE_SUBS_ENABLED || document.getElementById('composeMaskEnabled').checked) {
+				videoComposeRenderSubtitle();
+			}
+			workspaceHighlightCurrentSegment();
+		});
+		video.addEventListener('loadedmetadata', () => {
+			videoComposeSyncOverlay();
+			videoComposeRenderSubtitle();
+		});
+		video.addEventListener('play', () => videoComposeSyncOverlay());
+		window.addEventListener('resize', () => videoComposeSyncOverlay());
+	}
+	const subOverlay = document.getElementById('composerSubtitleOverlay');
+	if (subOverlay) {
+		subOverlay.addEventListener('mousedown', videoComposeSubtitleMouseDown);
+	}
+	document.getElementById('videoComposeBtn').addEventListener('click', () => { if (VIDEO_CURRENT_ID) videoComposeExport(VIDEO_CURRENT_ID); });
+	document.getElementById('videoComposePreviewBtn').addEventListener('click', () => { if (VIDEO_CURRENT_ID) { videoComposeRenderSubtitle(); videoComposeSyncOverlay(); } });
+	document.getElementById('videoOpenComposeFolderBtn').addEventListener('click', () => videoComposeResetOverlay());
+	videoComposeRefreshButtons();
+}
+
+function videoComposeForm() {
+	const enabledMasks = document.getElementById('composeMaskEnabled').checked
+		? COMPOSE_MASKS.map(m => ({
+			id: m.id, x: m.x, y: m.y, w: m.w, h: m.h, mode: m.mode,
+			blur: m.blur, box_color: '#000000', box_opacity: m.boxOpacity, enabled: m.enabled,
+		}))
+		: [];
+	return {
+		source: CURRENT_WORKING_SOURCE === 'dub' ? 'dub' : 'original',
+		dub_id: CURRENT_WORKING_SOURCE === 'dub' ? CURRENT_DUB_ID : null,
+		aspect_ratio: 'original', width: 1080, height: 1920, fit_mode: 'contain', background_color: '#000000',
+		old_subtitle_masks_enabled: document.getElementById('composeMaskEnabled').checked,
+		old_subtitle_masks: enabledMasks,
+		subtitle_enabled: document.getElementById('composeSubsEnabled').checked,
+		subtitle_position: document.getElementById('composeSubsPosition').value,
+		subtitle_font_size: videoComposeFontSize(),
+		subtitle_color: document.getElementById('composeSubsColor').value,
+		subtitle_outline_color: document.getElementById('composeSubsOutlineColor').value,
+		subtitle_outline_width: parseInt(document.getElementById('composeSubsOutlineWidth').value, 10) || 2,
+		subtitle_box: document.getElementById('composeSubsBox').checked,
+		subtitle_box_color: '#000000',
+		subtitle_box_opacity: (parseInt(document.getElementById('composeSubsBoxOpacity').value, 10) || 0) / 100,
+		subtitle_margin_bottom: parseInt(document.getElementById('composeSubsMarginBottom').value, 10) || 60,
+		subtitle_max_chars: 22,
+	};
+}
+
+function videoComposeCurrentSegments() {
+	const video = document.getElementById('videoPreview');
+	if (!video) return [];
+	const t = video.currentTime || 0;
+	if (typeof VIDEO_VI_SEGMENTS !== 'undefined' && VIDEO_VI_SEGMENTS) {
+		const seg = VIDEO_VI_SEGMENTS.find(s => t >= (s.start || 0) && t <= (s.end || (s.start || 0) + 5));
+		if (seg) return [{ start: seg.start || t, end: (seg.end || seg.start + 5), text: seg.text || '' }];
+	}
+	if (typeof VIDEO_TRANSCRIPT_SEGMENTS !== 'undefined' && VIDEO_TRANSCRIPT_SEGMENTS) {
+		const seg = VIDEO_TRANSCRIPT_SEGMENTS.find(s => t >= (s.start || 0) && t <= (s.end || (s.start || 0) + 5));
+		if (seg) return [{ start: seg.start || t, end: (seg.end || seg.start + 5), text: seg.text || '' }];
+	}
+	return [];
+}
+
+function videoComposeExportSegments() {
+	const all = (typeof VIDEO_VI_SEGMENTS !== 'undefined' && VIDEO_VI_SEGMENTS && VIDEO_VI_SEGMENTS.length)
+		? VIDEO_VI_SEGMENTS
+		: ((typeof VIDEO_TRANSCRIPT_SEGMENTS !== 'undefined' && VIDEO_TRANSCRIPT_SEGMENTS) || []);
+	return all
+		.filter(s => s && s.text && String(s.text).trim())
+		.map(s => ({ start: s.start || 0, end: (s.end || (s.start || 0) + 5), text: String(s.text) }));
+}
+
+function videoComposeExport(id) {
+	const body = videoComposeForm();
+	body.subtitle_segments = videoComposeExportSegments();
+	videoComposeStatus('Đang gửi yêu cầu export...');
+	fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/compose`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	})
+		.then(r => r.json().then(d => ({ ok: r.ok, d })))
+		.then(({ ok, d }) => {
+			if (!ok) { videoComposeStatus(d.detail || ('Lỗi ' + d.status)); return; }
+			videoComposePoll(d.job_id);
+		})
+		.catch(e => videoComposeStatus('Không kết nối được server: ' + e.message));
+}
+
+function videoComposePoll(jobId) {
+	const tick = () => {
+		fetch(`${API_BASE}/api/videos/compose/${jobId}`)
+			.then(r => r.json())
+			.then(j => {
+				videoComposeStatus(j.progress + '% ' + (j.message || j.status));
+				if (j.status === 'done') { videoComposeStatus('Xong! ' + (j.message || '')); return; }
+				if (j.status === 'failed') { videoComposeStatus('Thất bại: ' + (j.error || j.message || '')); return; }
+				setTimeout(tick, 1000);
+			})
+			.catch(() => setTimeout(tick, 1500));
+	};
+	tick();
+}
+
+function videoComposeStatus(msg) {
+	const el = document.getElementById('videoComposeStatus');
+	if (el) el.textContent = msg || '';
 }
 
 document.getElementById('videoDownloadBtn').addEventListener('click', videoStartDownload);
@@ -4154,8 +4218,11 @@ document.getElementById('videoPreviewDubBtn').addEventListener('click', () => {
 document.getElementById('videoOpenDubFolderBtn').addEventListener('click', () => {
 	if (VIDEO_CURRENT_ID) videoOpenDubFolder(VIDEO_CURRENT_ID);
 });
-document.getElementById('videoComposeBtn').addEventListener('click', () => {
-	if (VIDEO_CURRENT_ID) videoComposeStart(VIDEO_CURRENT_ID);
+document.getElementById('videoFinalExportBtn').addEventListener('click', () => {
+	if (VIDEO_CURRENT_ID) workspaceFinalExport();
+});
+document.getElementById('videoOpenFinalFolderBtn').addEventListener('click', () => {
+	if (VIDEO_CURRENT_ID) workspaceOpenFinalFolder();
 });
 
 onDubSlider('dubOriginalVolume', 'dubOriginalVolumeVal');
@@ -4169,345 +4236,3 @@ document.getElementById('videoUrlInput').addEventListener('keydown', e => {
 	if (e.key === 'Enter') videoStartDownload();
 });
 videoLoadLibrary();
-
-// ─── Transcript Segment Editor (MVP-8.2) ───
-let TRANSCRIPT_SEGMENTS = [];
-let TRANSCRIPT_SEG_FILTER = 'all';
-let TRANSCRIPT_SEG_SEARCH = '';
-let TRANSCRIPT_SEG_DIRTY = new Set();
-let VIDEO_PREVIEW_BOUND = false;
-
-function subtitleSegmentAt(segments, t) {
-	if (!segments || !segments.length) return null;
-	if (!isFinite(t) || t < 0) t = 0;
-	let found = null;
-	for (let i = 0; i < segments.length; i++) {
-		if (t >= (segments[i].start || 0) && t < (segments[i].end || 0)) { found = segments[i]; break; }
-	}
-	return found;
-}
-
-function subtitleWrapPreview(text, maxLines, maxChars) {
-	let s = String(text || '').trim();
-	if (!s) return '';
-	maxLines = maxLines || 2;
-	maxChars = maxChars || 42;
-	const lines = [];
-	for (const word of s.split(/\s+/)) {
-		if (!word) continue;
-		if (lines.length && (lines[lines.length - 1] + ' ' + word).length <= maxChars) {
-			lines[lines.length - 1] += ' ' + word;
-		} else if (lines.length < maxLines) {
-			lines.push(word);
-		} else {
-			lines[lines.length - 1] += ' ?';
-			break;
-		}
-	}
-	return lines.join('\n');
-}
-
-function videoFmtSegTime(t) {
-	t = Math.max(0, parseFloat(t) || 0);
-	const m = Math.floor(t / 60);
-	const s = t - m * 60;
-	return `${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}`;
-}
-
-function videoSegParseTime(s) {
-	if (s == null) return NaN;
-	const str = String(s).trim();
-	if (!str) return NaN;
-	if (/^\d+(\.\d+)?$/.test(str)) return parseFloat(str);
-	const parts = str.split(':');
-	if (parts.length === 1) return parseFloat(parts[0].replace(',', '.'));
-	if (parts.length === 2) {
-		const min = parseFloat(parts[0]);
-		const sec = parseFloat(parts[1].replace(',', '.'));
-		if (!Number.isFinite(min) || !Number.isFinite(sec)) return NaN;
-		return min * 60 + sec;
-	}
-	return NaN;
-}
-
-function segFilterMatches(seg) {
-	if (TRANSCRIPT_SEG_FILTER === 'untranslated') return !seg.text_vi;
-	if (TRANSCRIPT_SEG_FILTER === 'edited') return !!seg.edited || TRANSCRIPT_SEG_DIRTY.has(seg.index);
-	if (TRANSCRIPT_SEG_FILTER === 'long') return seg.status === 'too_long';
-	return true;
-}
-
-function segSearchMatches(seg) {
-	const q = TRANSCRIPT_SEG_SEARCH.trim().toLowerCase();
-	if (!q) return true;
-	return (seg.text_original || '').toLowerCase().includes(q) || (seg.text_vi || '').toLowerCase().includes(q);
-}
-
-async function videoLoadSegments(id, silent) {
-	try {
-		const res = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(id)}/segments`);
-		const data = await res.json().catch(() => ({}));
-		if (!res.ok) {
-			TRANSCRIPT_SEGMENTS = [];
-			TRANSCRIPT_SEG_DIRTY = new Set();
-			const empty = document.getElementById('videoSegEmpty');
-			const bar = document.getElementById('videoSegBar');
-			const wrap = document.getElementById('segmentList');
-			if (empty) empty.style.display = 'block';
-			if (bar) bar.style.display = 'none';
-			if (wrap) wrap.style.display = 'none';
-			if (document.getElementById('videoSegStats')) document.getElementById('videoSegStats').textContent = '';
-			if (!silent) videoShowError(data.detail || `Lỗi ${res.status}`);
-			return;
-		}
-		TRANSCRIPT_SEGMENTS = Array.isArray(data.segments) ? data.segments : [];
-		TRANSCRIPT_SEG_DIRTY = new Set();
-		const warnEl = document.getElementById('videoSegWarning');
-		if (warnEl) {
-			if (data.warning) { warnEl.textContent = '⚠ ' + data.warning; warnEl.style.display = 'block'; }
-			else warnEl.style.display = 'none';
-		}
-		videoRenderSegments();
-		if (typeof editorSyncSubtitleOverlay === 'function') editorSyncSubtitleOverlay();
-	} catch (e) { if (!silent) videoShowError('Không tải được danh sách câu: ' + e.message); }
-}
-
-function videoRenderSegments() {
-	const list = document.getElementById('segmentList');
-	if (!list) return;
-	const has = TRANSCRIPT_SEGMENTS.length > 0;
-	if (document.getElementById('videoSegBar')) document.getElementById('videoSegBar').style.display = has ? 'block' : 'none';
-	if (document.getElementById('videoSegEmpty')) document.getElementById('videoSegEmpty').style.display = has ? 'none' : 'block';
-	list.style.display = has ? 'block' : 'none';
-	if (!has) {
-		if (document.getElementById('videoSegStats')) document.getElementById('videoSegStats').textContent = '';
-		list.innerHTML = '';
-		return;
-	}
-	const translated = TRANSCRIPT_SEGMENTS.filter(s => s.text_vi).length;
-	document.getElementById('videoSegStats').textContent = `${translated}/${TRANSCRIPT_SEGMENTS.length} câu đã dịch`;
-	const cards = TRANSCRIPT_SEGMENTS.map(seg => {
-		if (!segFilterMatches(seg) || !segSearchMatches(seg)) return '';
-		const dirty = TRANSCRIPT_SEG_DIRTY.has(seg.index);
-		const statusLabel = { edited: 'Đã sửa', empty: 'Chưa dịch', too_long: 'Quá dài' }[seg.status] || '';
-		const v = seg.text_vi || '';
-		const est = Math.max(10, Math.ceil(seg.duration * 3 * 1.5));
-		const warnCnt = v.length > est;
-		return `<div class="segment-card ${dirty ? 'seg-dirty' : ''}" data-segindex="${seg.index}">
-			<div class="seg-card-head">
-				<span class="seg-idx">${seg.index + 1}</span>
-				<span class="seg-time" title="Sửa thời gian: giây (1.5) hoặc mm:ss.ms (00:01.50)">
-					<input class="seg-tin" data-segfield="start" value="${videoFmtSegTime(seg.start)}" title="Thời điểm bắt đầu">
-					<span class="seg-arrow">→</span>
-					<input class="seg-tin" data-segfield="end" value="${videoFmtSegTime(seg.end)}" title="Thời điểm kết thúc">
-				</span>
-				<span class="seg-count ${warnCnt ? 'warn' : ''}">${v.length} ký tự</span>
-				${statusLabel ? `<span class="seg-badge ${seg.status}">${statusLabel}</span>` : ''}
-			</div>
-			<div class="seg-card-body">
-				<div class="seg-field">
-					<span class="seg-field-label">Gốc</span>
-					<textarea data-segfield="text_original" rows="2" placeholder="Lời thoại gốc">${videoEsc(seg.text_original)}</textarea>
-				</div>
-				<div class="seg-field">
-					<span class="seg-field-label">Tiếng Việt</span>
-					<textarea data-segfield="text_vi" rows="2" placeholder="Bản dịch tiếng Việt">${videoEsc(v)}</textarea>
-				</div>
-			</div>
-			<div class="seg-card-actions">
-				<button class="btn-sm" data-segaction="play" title="Phát đoạn này trong video">Phát đoạn</button>
-				<button class="btn-sm" data-segaction="save" ${dirty ? '' : 'disabled'}>Lưu đoạn</button>
-				<button class="btn-sm" data-segaction="tts" ${v ? '' : 'disabled'} title="Dùng câu này cho TTS">Dùng cho TTS</button>
-				<button class="btn-sm" data-segaction="copy">Chép</button>
-			</div>
-		</div>`;
-	}).join('');
-	list.innerHTML = cards;
-}
-
-function videoSegUpdateRowState(index) {
-	const card = document.querySelector(`#segmentList .segment-card[data-segindex="${index}"]`);
-	if (!card) return;
-	card.classList.toggle('seg-dirty', TRANSCRIPT_SEG_DIRTY.has(index));
-	const saveBtn = card.querySelector('button[data-segaction="save"]');
-	if (saveBtn) saveBtn.disabled = !TRANSCRIPT_SEG_DIRTY.has(index);
-	const seg = TRANSCRIPT_SEGMENTS[index];
-	const counter = card.querySelector('.seg-count');
-	if (counter && seg) {
-		const v = seg.text_vi || '';
-		const est = Math.max(10, Math.ceil(seg.duration * 3 * 1.5));
-		counter.textContent = `${v.length} ký tự`;
-		counter.classList.toggle('warn', v.length > est);
-	}
-}
-
-function videoSegHighlight(index) {
-	let seen = false;
-	document.querySelectorAll('#segmentList .segment-card').forEach(card => {
-		const isActive = parseInt(card.getAttribute('data-segindex'), 10) === index;
-		card.classList.toggle('seg-active', isActive);
-		if (isActive) { seen = true; card.scrollIntoView({ block: 'nearest' }); }
-	});
-	if (index === null || index === undefined) return seen;
-}
-
-function videoSegPlaySegment(seg) {
-	const v = document.getElementById('videoPreview');
-	if (!v || !v.src) return;
-	v.currentTime = seg.start || 0;
-	v.play().catch(() => {});
-	videoSegHighlight(seg.index);
-}
-
-async function videoSegSaveOne(index) {
-	const seg = TRANSCRIPT_SEGMENTS[index];
-	if (!seg) return;
-	if (!Number.isFinite(seg.start) || seg.start < 0) { videoShowError('Câu ' + (index + 1) + ': thời gian bắt đầu không hợp lệ.'); return; }
-	if (!Number.isFinite(seg.end) || seg.end <= seg.start) { videoShowError('Câu ' + (index + 1) + ': thời gian kết thúc phải lớn hơn thời gian bắt đầu.'); return; }
-	try {
-		const res = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(VIDEO_CURRENT_ID)}/segments/${index}`, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ start: seg.start, end: seg.end, text_original: seg.text_original, text_vi: seg.text_vi }),
-		});
-		const data = await res.json().catch(() => ({}));
-		if (!res.ok) { videoShowError(data.detail || `Lỗi ${res.status}`); return; }
-		TRANSCRIPT_SEGMENTS = data.segments || TRANSCRIPT_SEGMENTS;
-		TRANSCRIPT_SEG_DIRTY.delete(index);
-		videoRenderSegments();
-		videoSegAfterSave();
-	} catch (e) { videoShowError('Không lưu được câu này: ' + e.message); }
-}
-
-async function videoSegSaveAll() {
-	const items = [];
-	for (let i = 0; i < TRANSCRIPT_SEGMENTS.length; i++) {
-		if (!TRANSCRIPT_SEG_DIRTY.has(i)) continue;
-		const seg = TRANSCRIPT_SEGMENTS[i];
-		if (!Number.isFinite(seg.start) || seg.start < 0 || !Number.isFinite(seg.end) || seg.end <= seg.start) {
-			videoShowError('Câu ' + (i + 1) + ': thời gian không hợp lệ — hãy kiểm tra lại.');
-			return;
-		}
-		items.push({ index: i, start: seg.start, end: seg.end, text_original: seg.text_original, text_vi: seg.text_vi });
-	}
-	if (!items.length) {
-		const warnEl = document.getElementById('videoSegWarning');
-		if (warnEl) { warnEl.textContent = 'Không có câu nào đang được sửa.'; warnEl.style.display = 'block'; }
-		return;
-	}
-	try {
-		const res = await fetch(`${API_BASE}/api/videos/${encodeURIComponent(VIDEO_CURRENT_ID)}/segments`, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ segments: items }),
-		});
-		const data = await res.json().catch(() => ({}));
-		if (!res.ok) { videoShowError(data.detail || `Lỗi ${res.status}`); return; }
-		TRANSCRIPT_SEGMENTS = data.segments || TRANSCRIPT_SEGMENTS;
-		TRANSCRIPT_SEG_DIRTY = new Set();
-		videoRenderSegments();
-		videoSegAfterSave();
-	} catch (e) { videoShowError('Không lưu được: ' + e.message); }
-}
-
-function videoSegAfterSave() {
-	const origText = TRANSCRIPT_SEGMENTS.map(s => s.text_original).filter(Boolean).join(' ').trim();
-	const viText = TRANSCRIPT_SEGMENTS.map(s => s.text_vi).filter(Boolean).join(' ').trim();
-	if (origText) document.getElementById('videoTranscriptText').textContent = origText;
-	if (viText) document.getElementById('videoTranscriptViText').textContent = viText;
-	if (typeof renderVisualEditor === 'function') renderVisualEditor();
-	if (typeof editorSyncSubtitleOverlay === 'function') editorSyncSubtitleOverlay();
-}
-
-function videoSegSendToTTS(seg) {
-	const t = seg.text_vi || '';
-	if (!t.trim()) { videoShowError('Câu này chưa có bản dịch — hãy dịch trước hoặc nhập tay.'); return; }
-	textInput.value = t;
-	if (typeof updateCharCount === 'function') updateCharCount();
-	const notice = document.getElementById('videoTtsViNotice');
-	if (notice) {
-		notice.style.display = '';
-		clearTimeout(VIDEO_TTS_NOTICE_T);
-		VIDEO_TTS_NOTICE_T = setTimeout(() => { notice.style.display = 'none'; }, 2500);
-	}
-}
-
-function videoSegCopy(index) {
-	const seg = TRANSCRIPT_SEGMENTS[index];
-	if (!seg || !seg.text_vi) return;
-	if (navigator.clipboard && navigator.clipboard.writeText) {
-		navigator.clipboard.writeText(seg.text_vi).then(() => {
-			const btn = document.querySelector(`#segmentList .segment-card[data-segindex="${index}"] button[data-segaction="copy"]`);
-			if (btn) { const old = btn.textContent; btn.textContent = 'Đã chép'; setTimeout(() => { btn.textContent = old; }, 1200); }
-		}).catch(() => {});
-	}
-}
-
-function videoSegBindPreview() {
-	if (VIDEO_PREVIEW_BOUND) return;
-	VIDEO_PREVIEW_BOUND = true;
-	const v = document.getElementById('videoPreview');
-	v.addEventListener('timeupdate', () => {
-		if (!TRANSCRIPT_SEGMENTS.length) return;
-		const seg = subtitleSegmentAt(TRANSCRIPT_SEGMENTS, v.currentTime);
-		if (seg) videoSegHighlight(seg.index);
-		else videoSegHighlight(-1);
-	});
-}
-
-let VIDEO_TTS_NOTICE_T = null;
-
-function videoSegBindEvents() {
-	const list = document.getElementById('segmentList');
-	if (!list || list.dataset.bound) return;
-	list.dataset.bound = '1';
-
-	list.addEventListener('click', (e) => {
-		const btn = e.target.closest('button[data-segaction]');
-		if (!btn) return;
-		const card = btn.closest('.segment-card[data-segindex]');
-		if (!card) return;
-		const index = parseInt(card.getAttribute('data-segindex'), 10);
-		const seg = TRANSCRIPT_SEGMENTS[index];
-		if (!seg) return;
-		const act = btn.getAttribute('data-segaction');
-		if (act === 'play') videoSegPlaySegment(seg);
-		else if (act === 'save') videoSegSaveOne(index);
-		else if (act === 'tts') videoSegSendToTTS(seg);
-		else if (act === 'copy') videoSegCopy(index);
-	});
-
-	list.addEventListener('input', (e) => {
-		const ta = e.target.closest('input[data-segfield], textarea[data-segfield]');
-		if (!ta) return;
-		const card = ta.closest('.segment-card[data-segindex]');
-		if (!card) return;
-		const index = parseInt(card.getAttribute('data-segindex'), 10);
-		const seg = TRANSCRIPT_SEGMENTS[index];
-		if (!seg) return;
-		const field = ta.getAttribute('data-segfield');
-		if (field === 'start' || field === 'end') seg[field] = videoSegParseTime(ta.value);
-		else seg[field] = ta.value;
-		TRANSCRIPT_SEG_DIRTY.add(index);
-		videoSegUpdateRowState(index);
-	});
-
-	document.querySelectorAll('.seg-tab').forEach(btn => btn.addEventListener('click', () => {
-		document.querySelectorAll('.seg-tab').forEach(b => b.classList.toggle('active', b === btn));
-		TRANSCRIPT_SEG_FILTER = btn.getAttribute('data-segfilter');
-		videoRenderSegments();
-	}));
-
-	const search = document.getElementById('videoSegSearch');
-	if (search) search.addEventListener('input', (e) => {
-		TRANSCRIPT_SEG_SEARCH = e.target.value;
-		videoRenderSegments();
-	});
-
-	const saveAll = document.getElementById('videoSegSaveAllBtn');
-	if (saveAll) saveAll.addEventListener('click', videoSegSaveAll);
-	const reload = document.getElementById('videoSegReloadBtn');
-	if (reload) reload.addEventListener('click', () => videoLoadSegments(VIDEO_CURRENT_ID));
-}
-
-videoSegBindEvents();

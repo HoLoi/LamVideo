@@ -9,5 +9,5 @@
 @echo off
 echo Starting TTS API server...
 cd /d "%~dp0backend"
-"C:\Users\hophu\AppData\Local\Programs\Python\Python310\python.exe" -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+"C:\Users\hophu\AppData\Local\Programs\Python\Python312\python.exe" -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 pause
